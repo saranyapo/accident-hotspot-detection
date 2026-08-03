@@ -1,5 +1,6 @@
 from django.db import models
 
+
 class Accident(models.Model):
     accident_id = models.IntegerField(unique=True)
     city = models.CharField(max_length=100)
@@ -30,3 +31,16 @@ class Accident(models.Model):
 
     def __str__(self):
         return f"{self.accident_id} - {self.city}"
+
+
+class HotspotCluster(models.Model):
+    city = models.CharField(max_length=100)
+    cluster_id = models.IntegerField()
+    center_lat = models.FloatField()
+    center_lng = models.FloatField()
+    avg_risk_score = models.FloatField()
+    risk_level = models.CharField(max_length=10)
+    accident_count = models.IntegerField()
+
+    def __str__(self):
+        return f"{self.city} - Cluster {self.cluster_id} ({self.risk_level})"
