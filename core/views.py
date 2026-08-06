@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.shortcuts import render
 from .models import HotspotCluster
 
 def hotspot_json(request):
@@ -18,3 +19,7 @@ def hotspot_json(request):
     ]
 
     return JsonResponse({"hotspots": data}, safe=False)
+
+
+def map_view(request):
+    return render(request, 'core/map.html')
