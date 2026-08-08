@@ -25,6 +25,36 @@
 
     <div id="map"></div>
 
+    <button id="resetZoomBtn" style="
+    position: fixed;
+    top: 80px;
+    right: 20px;
+    z-index: 1000;
+    padding: 8px 14px;
+    background: white;
+    border: 2px solid #333;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+">Reset View</button>
+
+<div id="legend" style="
+    position: fixed;
+    bottom: 30px;
+    left: 20px;
+    z-index: 1000;
+    background: white;
+    padding: 10px 14px;
+    border: 2px solid #333;
+    border-radius: 6px;
+    font-size: 14px;
+">
+    <b>Risk Level</b><br>
+    <span style="color:red;">&#9679;</span> High<br>
+    <span style="color:orange;">&#9679;</span> Medium<br>
+    <span style="color:green;">&#9679;</span> Low
+</div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -32,13 +62,44 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        // Center roughly on India
-        const map = L.map('map').setView([22.9734, 78.6569], 5);
+    // Center roughly on India
+    const map = L.map('map').setView([22.9734, 78.6569], 5);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors'
-        }).addTo(map);
-    </script>
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    
+    // Reset view button
+    document.getElementById("resetZoomBtn").addEventListener("click", function() {
+    map.setView([22.9734, 78.6569], 5);
+    });
+
+    // Fetch hotspot clusters and plot them
+    fetch("/api/hotspots/")
+      .then(response => response.json())
+      .then(data => {
+        data.hotspots.forEach(function(spot) {
+          var color = spot.risk_level === "High" ? "red" :
+                      spot.risk_level === "Medium" ? "orange" : "green";
+
+          L.circleMarker([spot.lat, spot.lng], {
+            radius: 8,
+            fillColor: color,
+            color: color,
+            fillOpacity: 0.7,
+            weight: 1
+          })
+          .bindPopup(
+            "<b>" + spot.city + "</b><br>" +
+            "Risk Level: " + spot.risk_level + "<br>" +
+            "Avg Risk Score: " + spot.avg_risk_score + "<br>" +
+            "Accidents: " + spot.accident_count
+          )
+          .addTo(map);
+        });
+      })
+      .catch(error => console.error("Error loading hotspots:", error));
+</script>
 
 </body>
 </html>

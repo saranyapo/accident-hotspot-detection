@@ -54,20 +54,34 @@ class Command(BaseCommand):
             kmeans = KMeans(n_clusters=chosen_k, random_state=42, n_init=10)
             city_df['cluster'] = kmeans.fit_predict(scaled_features)
 
-            # Inverse-transform cluster centers back to real lat/lng/risk scale
-            centers = scaler.inverse_transform(kmeans.cluster_centers_)
-
-            # Compute per-cluster stats: center, avg risk, accident count
+            # Compute per-cluster stats: medoid (real accident point closest to
+            # the cluster center), avg risk, accident count
             cluster_stats = []
             for cluster_id in range(chosen_k):
-                cluster_rows = city_df[city_df['cluster'] == cluster_id]
+                cluster_mask = city_df['cluster'].values == cluster_id
+                cluster_rows = city_df[cluster_mask]
                 avg_risk = cluster_rows['custom_risk_score'].mean()
-                center_lat, center_lng, _ = centers[cluster_id]
+
+                # Find the real data point closest to this cluster's center
+                # (in scaled feature space) — this becomes our medoid
+                cluster_positions = np.where(cluster_mask)[0]
+                cluster_scaled_points = scaled_features[cluster_positions]
+                cluster_center_scaled = kmeans.cluster_centers_[cluster_id]
+
+                distances = np.linalg.norm(
+                    cluster_scaled_points - cluster_center_scaled, axis=1
+                )
+                medoid_position = cluster_positions[np.argmin(distances)]
+                medoid_row = city_df.iloc[medoid_position]
+
+                center_lat = float(medoid_row['latitude'])
+                center_lng = float(medoid_row['longitude'])
+
                 cluster_stats.append({
                     'city': city,
                     'cluster_id': cluster_id,
-                    'center_lat': float(center_lat),
-                    'center_lng': float(center_lng),
+                    'center_lat': center_lat,
+                    'center_lng': center_lng,
                     'avg_risk_score': float(avg_risk),
                     'accident_count': int(len(cluster_rows)),
                 })
