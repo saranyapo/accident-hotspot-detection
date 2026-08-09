@@ -21,6 +21,10 @@
 
     <nav class="navbar navbar-dark bg-dark px-3">
         <span class="navbar-brand mb-0 h1">Road Accident Hotspot Detection</span>
+        <div class="d-flex ms-auto">
+            <input type="text" id="searchBox" placeholder="Search a location..." class="form-control me-2" style="width:250px;">
+            <button id="searchBtn" class="btn btn-primary">Search</button>
+        </div>
     </nav>
 
     <div id="map"></div>
@@ -55,6 +59,22 @@
     <span style="color:green;">&#9679;</span> Low
 </div>
 
+<div id="noDataMsg" style="
+    display: none;
+    position: fixed;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: #e0e0e0;
+    color: #333;
+    padding: 10px 20px;
+    border: 2px solid #999;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+">No accident data available for this location</div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -68,16 +88,74 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-    
+
+    let hotspotData = []; // store fetched hotspots for distance checks
+
     // Reset view button
     document.getElementById("resetZoomBtn").addEventListener("click", function() {
-    map.setView([22.9734, 78.6569], 5);
+        map.setView([22.9734, 78.6569], 5);
+        hideNoDataMessage();
     });
+
+    // Location search
+    document.getElementById("searchBtn").addEventListener("click", searchLocation);
+    document.getElementById("searchBox").addEventListener("keypress", function(e) {
+        if (e.key === "Enter") searchLocation();
+    });
+
+    function searchLocation() {
+        const query = document.getElementById("searchBox").value.trim();
+        if (!query) return;
+
+        fetch("/api/geocode/?q=" + encodeURIComponent(query))
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                map.setView([data.lat, data.lng], 12);
+                checkCoverage(data.lat, data.lng);
+            })
+            .catch(() => alert("Search failed. Try again."));
+    }
+
+    // Haversine distance in km between two lat/lng points
+    function distanceKm(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) ** 2 +
+                  Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                  Math.sin(dLng/2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
+
+    function checkCoverage(lat, lng) {
+        const COVERAGE_RADIUS_KM = 50;
+        const nearby = hotspotData.some(spot =>
+            distanceKm(lat, lng, spot.lat, spot.lng) <= COVERAGE_RADIUS_KM
+        );
+        if (nearby) {
+            hideNoDataMessage();
+        } else {
+            showNoDataMessage();
+        }
+    }
+
+    function showNoDataMessage() {
+        document.getElementById("noDataMsg").style.display = "block";
+    }
+
+    function hideNoDataMessage() {
+        document.getElementById("noDataMsg").style.display = "none";
+    }
 
     // Fetch hotspot clusters and plot them
     fetch("/api/hotspots/")
       .then(response => response.json())
       .then(data => {
+        hotspotData = data.hotspots; // save for coverage checks
         data.hotspots.forEach(function(spot) {
           var color = spot.risk_level === "High" ? "red" :
                       spot.risk_level === "Medium" ? "orange" : "green";
