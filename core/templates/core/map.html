@@ -27,7 +27,42 @@
         </div>
     </nav>
 
-    <div id="map"></div>
+    <!-- City Safety Summary -->
+<div id="citySummary" class="card m-3" style="display: none;">
+    <div class="card-body">
+
+        <h4 id="summaryCity" class="mb-3">
+            City Safety Summary
+        </h4>
+
+        <div class="row text-center">
+
+            <div class="col">
+                <h5 id="summaryHotspots">0</h5>
+                <small>Hotspots</small>
+            </div>
+
+            <div class="col">
+                <h5 id="summaryHigh">0</h5>
+                <small>High Risk</small>
+            </div>
+
+            <div class="col">
+                <h5 id="summaryMedium">0</h5>
+                <small>Medium Risk</small>
+            </div>
+
+            <div class="col">
+                <h5 id="summaryLow">0</h5>
+                <small>Low Risk</small>
+            </div>
+
+        </div>
+
+    </div>
+</div>
+
+<div id="map"></div>
 
     <button id="resetZoomBtn" style="
     position: fixed;
@@ -95,6 +130,8 @@
     document.getElementById("resetZoomBtn").addEventListener("click", function() {
         map.setView([22.9734, 78.6569], 5);
         hideNoDataMessage();
+
+        document.getElementById("citySummary").style.display = "none";
     });
 
     // Location search
@@ -104,20 +141,59 @@
     });
 
     function searchLocation() {
+
         const query = document.getElementById("searchBox").value.trim();
+
         if (!query) return;
 
         fetch("/api/geocode/?q=" + encodeURIComponent(query))
             .then(response => response.json())
             .then(data => {
+
                 if (data.error) {
                     alert(data.error);
+
+                    document.getElementById("citySummary").style.display = "none";
+
                     return;
                 }
+
+            // Move map to searched location
                 map.setView([data.lat, data.lng], 12);
+
+            // Check whether hotspot data exists nearby
                 checkCoverage(data.lat, data.lng);
-            })
-            .catch(() => alert("Search failed. Try again."));
+
+            // Find hotspots near searched location
+                const nearbyClusters = hotspotData.filter(spot =>
+                    distanceKm(
+                        data.lat,
+                        data.lng,
+                        spot.lat,
+                        spot.lng
+                    ) <= 50
+                );
+
+                if (nearbyClusters.length === 0) {
+
+                    document.getElementById("citySummary").style.display = "none";
+
+                    return;
+                }
+
+            // Show safety summary
+                showCitySummary(
+                    query,
+                    nearbyClusters
+                );
+
+        })
+        .catch(() => {
+
+            alert("Search failed. Try again.");
+
+            document.getElementById("citySummary").style.display = "none";
+        });
     }
 
     // Haversine distance in km between two lat/lng points
@@ -149,6 +225,40 @@
 
     function hideNoDataMessage() {
         document.getElementById("noDataMsg").style.display = "none";
+    }
+
+    function showCitySummary(city, clusters) {
+
+        const summary = document.getElementById("citySummary");
+
+        const high = clusters.filter(
+            spot => spot.risk_level === "High"
+        ).length;
+
+        const medium = clusters.filter(
+            spot => spot.risk_level === "Medium"
+        ).length;
+
+        const low = clusters.filter(
+            spot => spot.risk_level === "Low"
+        ).length;
+
+        document.getElementById("summaryCity").textContent =
+            city + " Safety Summary";
+
+        document.getElementById("summaryHotspots").textContent =
+            clusters.length;
+
+        document.getElementById("summaryHigh").textContent =
+            high;
+
+        document.getElementById("summaryMedium").textContent =
+            medium;
+
+        document.getElementById("summaryLow").textContent =
+            low;
+
+        summary.style.display = "block";
     }
 
     // Fetch hotspot clusters and plot them
