@@ -42,5 +42,11 @@ class HotspotCluster(models.Model):
     risk_level = models.CharField(max_length=10)
     accident_count = models.IntegerField()
 
+    area_name = models.CharField(
+        max_length=200,
+        blank=True,
+        null=True
+    )
+
     def __str__(self):
         return f"{self.city} - Cluster {self.cluster_id} ({self.risk_level})"

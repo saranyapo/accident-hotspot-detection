@@ -15,6 +15,7 @@ def hotspot_json(request):
             "risk_level": c.risk_level,
             "avg_risk_score": round(c.avg_risk_score, 3),
             "accident_count": c.accident_count,
+            "area_name": c.area_name,
         }
         for c in clusters
     ]

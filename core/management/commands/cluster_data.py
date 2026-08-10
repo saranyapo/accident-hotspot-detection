@@ -1,13 +1,48 @@
 from django.core.management.base import BaseCommand
 import pandas as pd
 import numpy as np
+import time
+
 from django.db import connection
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
+from geopy.geocoders import Nominatim
 
 from core.models import HotspotCluster
 
+
+geolocator = Nominatim(
+    user_agent="accident_hotspot_project"
+)
+
+def get_area_name(latitude, longitude):
+    try:
+        location = geolocator.reverse(
+            (latitude, longitude),
+            exactly_one=True,
+            language="en"
+        )
+
+        if not location:
+            return "Unknown Area"
+
+        address = location.raw.get("address", {})
+
+        area_name = (
+            address.get("suburb")
+            or address.get("neighbourhood")
+            or address.get("city_district")
+            or address.get("town")
+            or address.get("city")
+            or "Unknown Area"
+        )
+
+        return area_name
+
+    except Exception as e:
+        print("Geocoding error:", e)
+        return "Unknown Area"
 
 class Command(BaseCommand):
     help = "Load accident data from MySQL, run K-Means clustering per city, and save hotspot clusters"
@@ -77,6 +112,16 @@ class Command(BaseCommand):
                 center_lat = float(medoid_row['latitude'])
                 center_lng = float(medoid_row['longitude'])
 
+                # Find approximate area name using the medoid coordinates
+                area_name = get_area_name(
+                    center_lat,
+                    center_lng
+                )
+
+                # Small delay between Nominatim requests
+                time.sleep(1)
+
+
                 cluster_stats.append({
                     'city': city,
                     'cluster_id': cluster_id,
@@ -84,6 +129,7 @@ class Command(BaseCommand):
                     'center_lng': center_lng,
                     'avg_risk_score': float(avg_risk),
                     'accident_count': int(len(cluster_rows)),
+                    'area_name': area_name,
                 })
 
             # Bucket avg risk into Low / Medium / High using tertiles within this city
