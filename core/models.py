@@ -25,6 +25,7 @@ class Accident(models.Model):
     casualties = models.IntegerField()
     is_peak_hour = models.BooleanField()
     custom_risk_score = models.FloatField()
+    cluster_id = models.IntegerField(null=True, blank=True)
 
     class Meta:
         db_table = 'accidents'

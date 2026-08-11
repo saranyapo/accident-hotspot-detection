@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import silhouette_score
 from geopy.geocoders import Nominatim
 
-from core.models import HotspotCluster
+from core.models import Accident, HotspotCluster
 
 
 geolocator = Nominatim(
@@ -43,6 +43,109 @@ def get_area_name(latitude, longitude):
     except Exception as e:
         print("Geocoding error:", e)
         return "Unknown Area"
+
+def is_water_location(latitude, longitude):
+    try:
+        location = geolocator.reverse(
+            (latitude, longitude),
+            exactly_one=True,
+            language="en"
+        )
+
+        if not location:
+            return False
+
+        address = location.raw.get("address", {})
+
+        water_keys = [
+            "water",
+            "sea",
+            "ocean",
+            "bay",
+            "strait",
+            "reservoir",
+            "lake",
+            "river",
+            "canal",
+            "harbour",
+            "dock",
+            "marina"
+        ]
+
+        for key in water_keys:
+            if key in address:
+                return True
+
+        display_name = location.raw.get(
+            "display_name", ""
+        ).lower()
+
+        water_words = [
+            "arabian sea",
+            "sea",
+            "ocean",
+            "bay",
+            "lake",
+            "river",
+            "reservoir",
+            "canal",
+            "harbour",
+            "harbor",
+            "water",
+            "creek"
+        ]
+
+        for word in water_words:
+            if word in display_name:
+                return True
+
+        return False
+
+    except Exception as e:
+        print("Water validation error:", e)
+        return False
+
+def find_land_medoid(cluster_rows, original_lat, original_lng):
+    """
+    Find the nearest actual accident point in the same cluster.
+    Only validate a limited number of closest candidates.
+    """
+
+    candidates = []
+
+    for _, row in cluster_rows.iterrows():
+
+        latitude = float(row["latitude"])
+        longitude = float(row["longitude"])
+
+        distance = np.sqrt(
+            (latitude - original_lat) ** 2 +
+            (longitude - original_lng) ** 2
+        )
+
+        candidates.append(
+            (distance, latitude, longitude)
+        )
+
+    # Sort by distance from the original medoid
+    candidates.sort(key=lambda x: x[0])
+
+    # Check only the 10 closest actual accident points
+    # instead of every point in the cluster
+    for distance, latitude, longitude in candidates[:10]:
+
+        if not is_water_location(
+            latitude,
+            longitude
+        ):
+            return latitude, longitude
+
+        # Small delay between Nominatim requests
+        time.sleep(1)
+
+    # If none of the checked points is confirmed as land,
+    # keep the original medoid
+    return original_lat, original_lng
 
 class Command(BaseCommand):
     help = "Load accident data from MySQL, run K-Means clustering per city, and save hotspot clusters"
@@ -89,6 +192,14 @@ class Command(BaseCommand):
             kmeans = KMeans(n_clusters=chosen_k, random_state=42, n_init=10)
             city_df['cluster'] = kmeans.fit_predict(scaled_features)
 
+            # Save cluster assignment for each accident
+            for _, row in city_df.iterrows():
+                Accident.objects.filter(
+                    accident_id=int(row['accident_id'])
+                ).update(
+                    cluster_id=int(row['cluster'])
+                )
+
             # Compute per-cluster stats: medoid (real accident point closest to
             # the cluster center), avg risk, accident count
             cluster_stats = []
@@ -111,6 +222,43 @@ class Command(BaseCommand):
 
                 center_lat = float(medoid_row['latitude'])
                 center_lng = float(medoid_row['longitude'])
+
+                # -------------------------------------------------
+                # Feature 7: Validate hotspot location
+                # -------------------------------------------------
+
+                if is_water_location(center_lat, center_lng):
+
+                    self.stdout.write(
+                        self.style.WARNING(
+                            f"{city} cluster {cluster_id}: "
+                            f"Medoid appears to be in WATER "
+                            f"({center_lat}, {center_lng})"
+                        )
+                    )
+
+                    # Find nearest actual accident point on land
+                    center_lat, center_lng = find_land_medoid(
+                        cluster_rows,
+                        center_lat,
+                        center_lng
+                    )
+
+                    self.stdout.write(
+                        self.style.SUCCESS(
+                            f"{city} cluster {cluster_id}: "
+                            f"Corrected to LAND point "
+                            f"({center_lat}, {center_lng})"
+                        )
+                    )
+
+                else:
+
+                    self.stdout.write(
+                        f"{city} cluster {cluster_id}: "
+                        f"Medoid is on LAND"
+                    )
+
 
                 # Find approximate area name using the medoid coordinates
                 area_name = get_area_name(

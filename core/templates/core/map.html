@@ -27,6 +27,11 @@
         </div>
     </nav>
 
+    <!-- High Risk Alert -->
+<div id="highRiskAlert" class="container mt-3" style="display: none;">
+</div>
+
+
     <!-- City Safety Summary -->
 <div id="citySummary" class="card m-3" style="display: none;">
     <div class="card-body">
@@ -132,6 +137,7 @@
         hideNoDataMessage();
 
         document.getElementById("citySummary").style.display = "none";
+        document.getElementById("highRiskAlert").style.display = "none";
     });
 
     // Location search
@@ -154,6 +160,8 @@
                     alert(data.error);
 
                     document.getElementById("citySummary").style.display = "none";
+                    document.getElementById("highRiskAlert").style.display = "none";
+
 
                     return;
                 }
@@ -177,7 +185,7 @@
                 if (nearbyClusters.length === 0) {
 
                     document.getElementById("citySummary").style.display = "none";
-
+                    document.getElementById("highRiskAlert").style.display = "none";
                     return;
                 }
 
@@ -186,6 +194,8 @@
                     query,
                     nearbyClusters
                 );
+            // Show high-risk warning
+                showHighRiskAlert(nearbyClusters);
 
         })
         .catch(() => {
@@ -261,6 +271,116 @@
         summary.style.display = "block";
     }
 
+    function showHighRiskAlert(clusters) {
+
+        const alertBox = document.getElementById("highRiskAlert");
+
+        const highRiskHotspots = clusters.filter(
+            spot => spot.risk_level === "High"
+        );
+
+        if (highRiskHotspots.length > 0) {
+
+            alertBox.innerHTML = `
+                <div class="alert alert-danger shadow-sm" role="alert">
+                    <h5 class="alert-heading">
+                    🚨 HIGH-RISK HOTSPOTS DETECTED
+                    </h5>
+
+                    <p>
+                        There are
+                        <strong>${highRiskHotspots.length}</strong>
+                        high-risk accident hotspots in this area.
+                    </p>
+
+                    <p class="mb-0">
+                        ⚠️ Please drive carefully and follow
+                        traffic safety rules.
+                    </p>
+                </div>
+            `;
+
+            alertBox.style.display = "block";
+
+        } else {
+
+            alertBox.style.display = "none";
+        }
+    }
+
+    function getSafetyRecommendations(spot) {
+
+        const recommendations = [];
+
+        // Recommendations based on risk factors
+        if (spot.risk_factors && spot.risk_factors.significant_factors) {
+
+            spot.risk_factors.significant_factors.forEach(function(factor) {
+
+                const f = factor.toLowerCase();
+
+                if (f.includes("traffic")) {
+                    recommendations.push(
+                        "🚗 Reduce speed and maintain a safe distance from other vehicles."
+                    );
+                }
+
+                if (f.includes("rain") || f.includes("weather")) {
+                    recommendations.push(
+                        "🌧️ Drive slowly on wet roads and avoid sudden braking."
+                    );
+                }
+
+                if (f.includes("fog") || f.includes("visibility")) {
+                    recommendations.push(
+                        "🌫️ Use headlights, reduce speed, and maintain extra distance."
+                    );
+                }
+
+                if (f.includes("peak") || f.includes("time")) {
+                    recommendations.push(
+                        "⏰ Be extra cautious during peak traffic hours."
+                    );
+                }
+
+                if (f.includes("speed")) {
+                    recommendations.push(
+                        "⚠️ Follow the speed limit and avoid overspeeding."
+                    );
+                }
+
+                if (f.includes("severity") || f.includes("fatal")) {
+                    recommendations.push(
+                        "🛑 Exercise extra caution because serious accidents have been observed in this hotspot."
+                    );
+                }
+
+            });
+        }
+
+        // Risk-level based recommendation
+        if (spot.risk_level === "High") {
+
+            recommendations.push(
+                "🚨 This is a high-risk hotspot. Drive defensively and follow all traffic safety rules."
+            );
+
+        } else if (spot.risk_level === "Medium") {
+
+            recommendations.push(
+                "⚠️ Maintain normal caution and remain alert while driving through this area."
+            );
+
+        } else {
+
+            recommendations.push(
+                "✅ Continue following normal road safety practices."
+            );
+        }
+
+        // Remove duplicate recommendations
+        return [...new Set(recommendations)];
+    }
     // Fetch hotspot clusters and plot them
     fetch("/api/hotspots/")
       .then(response => response.json())
@@ -278,11 +398,64 @@
             weight: 1
           })
           .bindPopup(
-                "<b>" + spot.city + " - Hotspot " + (spot.cluster_id + 1) + "</b><br>" +
-                "Approximate Area: " + (spot.area_name || "Unknown Area") + "<br>" +
-                "Risk Level: " + spot.risk_level + "<br>" +
-                "Avg Risk Score: " + spot.avg_risk_score + "<br>" +
-                "Accidents: " + spot.accident_count
+                "<div style='min-width:280px;'>" +
+
+                "<b>" + spot.city +
+                " - Hotspot " + (spot.cluster_id + 1) +
+                "</b><br>" +
+
+                "Approximate Area: " +
+                (spot.area_name || "Unknown Area") +
+                "<br>" +
+
+                "Risk Level: " +
+                spot.risk_level +
+                "<br>" +
+
+                "Avg Risk Score: " +
+                spot.avg_risk_score +
+                "<br>" +
+
+                "Accidents: " +
+                spot.accident_count +
+
+                "<hr>" +
+
+                "<b>Why is this hotspot risky?</b><br><br>" +
+
+                (
+                    spot.risk_factors.significant_factors.length > 0
+
+                    ?
+
+                    spot.risk_factors.significant_factors
+                        .map(function(factor) {
+                            return "🔴 " + factor + "<br><br>";
+                        })
+                        .join("")
+
+                    :
+
+                    "No dominant risk factor was identified from the available data.<br><br>"
+                ) +
+
+                "<hr>" +
+
+                "<b>🛡️ Safety Recommendations</b><br><br>" +
+
+                getSafetyRecommendations(spot)
+                    .map(function(recommendation) {
+                        return "• " + recommendation + "<br><br>";
+                    })
+                    .join("") +
+
+                "<hr>" +
+
+                "<small>" +
+                "The recommendations are generated from the accident patterns and risk level of this hotspot." +
+                "</small>" +
+
+                "</div>"
             )
           .addTo(map);
         });
