@@ -49,3 +49,4 @@ print(df[['accident_severity', 'casualties', 'traffic_density', 'weather', 'hour
 check = pd.read_csv("data/cleaned_accidents.csv")
 print(check.columns.tolist())
 print('custom_risk_score' in check.columns)
+print(df['custom_risk_score'].isna().sum())

@@ -43,7 +43,7 @@ class Command(BaseCommand):
                     is_peak_hour=bool(row["is_peak_hour"]),
 
                     # Risk score will be calculated by the project later
-                    custom_risk_score=0.0,
+                    custom_risk_score=float(row["custom_risk_score"]),
                 )
             )
 
