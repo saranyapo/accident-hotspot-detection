@@ -1,8 +1,7 @@
 import pandas as pd
 
 # Load the Kerala dataset
-df = pd.read_csv("data/kerala_accidents.csv")
-
+df = pd.read_csv("data/kerala_accidents_jittered.csv")
 print("Original shape:", df.shape)
 
 # Add state because the new dataset contains only Kerala accidents

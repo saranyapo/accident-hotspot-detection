@@ -38,7 +38,7 @@ class Accident(models.Model):
     cluster_id = models.IntegerField(null=True, blank=True)
 
     class Meta:
-        db_table = 'accidents'
+        db_table = "accidents"
 
     def __str__(self):
         return f"{self.accident_id} - {self.city}"
