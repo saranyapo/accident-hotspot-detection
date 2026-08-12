@@ -115,6 +115,22 @@
     font-weight: bold;
 ">No accident data available for this location</div>
 
+<div id="searchErrorMsg" style="
+    display: none;
+    position: fixed;
+    top: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: #f8d7da;
+    color: #721c24;
+    padding: 10px 20px;
+    border: 2px solid #f5c6cb;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+"></div>
+
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 
@@ -130,6 +146,9 @@
     }).addTo(map);
 
     let hotspotData = []; // store fetched hotspots for distance checks
+
+    const COVERAGE_RADIUS_KM = 50; // "is there any data nearby at all" check
+    const SUMMARY_RADIUS_KM = 15;  // "what's near this specific searched place" for the summary card
 
     // Reset view button
     document.getElementById("resetZoomBtn").addEventListener("click", function() {
@@ -157,7 +176,8 @@
             .then(data => {
 
                 if (data.error) {
-                    alert(data.error);
+                    document.getElementById("searchErrorMsg").textContent = data.error;
+                    document.getElementById("searchErrorMsg").style.display = "block";
 
                     document.getElementById("citySummary").style.display = "none";
                     document.getElementById("highRiskAlert").style.display = "none";
@@ -168,6 +188,7 @@
 
             // Move map to searched location
                 map.setView([data.lat, data.lng], 12);
+                document.getElementById("searchErrorMsg").style.display = "none";
 
             // Check whether hotspot data exists nearby
                 checkCoverage(data.lat, data.lng);
@@ -179,7 +200,7 @@
                         data.lng,
                         spot.lat,
                         spot.lng
-                    ) <= 50
+                    ) <= SUMMARY_RADIUS_KM
                 );
 
                 if (nearbyClusters.length === 0) {
@@ -218,7 +239,6 @@
     }
 
     function checkCoverage(lat, lng) {
-        const COVERAGE_RADIUS_KM = 50;
         const nearby = hotspotData.some(spot =>
             distanceKm(lat, lng, spot.lat, spot.lng) <= COVERAGE_RADIUS_KM
         );
@@ -419,27 +439,51 @@
                 "Accidents: " +
                 spot.accident_count +
 
-                "<hr>" +
-
-                "<b>Why is this hotspot risky?</b><br><br>" +
+               "<hr>" +
 
                 (
-                    spot.risk_factors.significant_factors.length > 0
+                    spot.risk_level === "Low"
 
                     ?
 
-                    spot.risk_factors.significant_factors
-                        .map(function(factor) {
-                            return "🔴 " + factor + "<br><br>";
-                        })
-                        .join("")
+                    "<b>✅ This is a low-risk area</b><br><br>No significant risk factors were identified here.<br><br>"
 
                     :
 
-                    "No dominant risk factor was identified from the available data.<br><br>"
-                ) +
+                    spot.risk_level === "Medium"
 
-                "<hr>" +
+                    ?
+
+                    "<b>⚠️ Why is this a moderate-risk hotspot?</b><br><br>" +
+                    (
+                        spot.risk_factors.significant_factors.length > 0
+                        ?
+                        spot.risk_factors.significant_factors
+                            .map(function(factor) {
+                                return "🟠 " + factor + "<br><br>";
+                            })
+                            .join("")
+                        :
+                        "No single dominant risk factor was identified, but some risk was still present in this area.<br><br>"
+                    )
+
+                    :
+
+                    "<b>🚨 Why is this a high-risk hotspot?</b><br><br>" +
+                    (
+                        spot.risk_factors.significant_factors.length > 0
+                        ?
+                        spot.risk_factors.significant_factors
+                            .map(function(factor) {
+                                return "🔴 " + factor + "<br><br>";
+                        })
+                        .join("")
+                    :
+                    "No dominant risk factor was identified from the available data.<br><br>"
+                )
+            ) +
+
+            "<hr>" +
 
                 "<b>🛡️ Safety Recommendations</b><br><br>" +
 
