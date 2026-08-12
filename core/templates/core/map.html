@@ -123,7 +123,7 @@
 
     <script>
     // Center roughly on India
-    const map = L.map('map').setView([22.9734, 78.6569], 5);
+    const map = L.map('map').setView([10.3, 76.3], 7);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '&copy; OpenStreetMap contributors'
@@ -133,7 +133,7 @@
 
     // Reset view button
     document.getElementById("resetZoomBtn").addEventListener("click", function() {
-        map.setView([22.9734, 78.6569], 5);
+        map.setView([10.3, 76.3], 7);
         hideNoDataMessage();
 
         document.getElementById("citySummary").style.display = "none";
