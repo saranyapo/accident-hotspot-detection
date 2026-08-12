@@ -149,8 +149,8 @@ def hotspot_json(request):
         data.append({
             "city": c.city,
             "cluster_id": c.cluster_id,
-            "lat": c.center_lat,
-            "lng": c.center_lng,
+            "center_lat": c.center_lat,
+            "center_lng": c.center_lng,
             "risk_level": c.risk_level,
             "avg_risk_score": round(c.avg_risk_score, 3),
             "accident_count": c.accident_count,
