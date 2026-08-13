@@ -2,6 +2,144 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from .models import Accident, HotspotCluster
 from geopy.geocoders import Nominatim
+import math
+import requests
+
+def haversine_distance(lat1, lng1, lat2, lng2):
+    """Returns distance in km between two lat/lng points."""
+    R = 6371  # Earth's radius in km
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2
+         + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
+         * math.sin(dlng / 2) ** 2)
+    c = 2 * math.asin(math.sqrt(a))
+    return R * c
+
+def _get_osrm_routes(start_lat, start_lng, end_lat, end_lng):
+    url = (
+        f"http://router.project-osrm.org/route/v1/driving/"
+        f"{start_lng},{start_lat};{end_lng},{end_lat}"
+        f"?alternatives=true&overview=full&geometries=geojson"
+    )
+    try:
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+    except (requests.RequestException, ValueError):
+        return None
+
+    if data.get("code") != "Ok" or not data.get("routes"):
+        return None
+
+    return data["routes"]
+
+
+HOTSPOT_MATCH_RADIUS_KM = 1.5
+
+def _match_hotspots_to_route(coords):
+    """
+    coords: list of [lng, lat] pairs from OSRM's geojson geometry.
+    Returns matched hotspots (deduplicated) within HOTSPOT_MATCH_RADIUS_KM of any point.
+    """
+    all_hotspots = HotspotCluster.objects.all()
+    matched = {}
+
+    # Sample points if the route is very long, so we're not checking
+    # hundreds of points against every hotspot
+    sample_coords = coords[::3] if len(coords) > 300 else coords
+
+    for lng, lat in sample_coords:
+        for h in all_hotspots:
+            if h.id in matched:
+                continue
+            dist = haversine_distance(lat, lng, h.center_lat, h.center_lng)
+            if dist <= HOTSPOT_MATCH_RADIUS_KM:
+                matched[h.id] = {
+                    "id": h.id,
+                    "city": h.city,
+                    "area_name": h.area_name,
+                    "risk_level": h.risk_level,
+                    "avg_risk_score": round(h.avg_risk_score, 3),
+                    "accident_count": h.accident_count,
+                    "lat": h.center_lat,
+                    "lng": h.center_lng,
+                    "distance_km": round(dist, 2),
+                }
+
+    return list(matched.values())
+
+
+def _geocode_place(place_name):
+    """Geocode with Kerala context appended to reduce ambiguous matches
+    (e.g. 'Alappuzha' alone can resolve to a district centroid instead of the town)."""
+    geolocator = Nominatim(user_agent="accident_hotspot_app")
+    try:
+        location = geolocator.geocode(f"{place_name}, Kerala, India", timeout=5)
+    except Exception:
+        return None
+    if not location:
+        return None
+    return {"lat": location.latitude, "lng": location.longitude}
+
+
+def route_risk_json(request):
+    start_name = request.GET.get("start", "").strip()
+    end_name = request.GET.get("end", "").strip()
+
+    if not start_name or not end_name:
+        return JsonResponse({"error": "Please provide both start and destination."}, status=400)
+
+    start_point = _geocode_place(start_name)
+    if not start_point:
+        return JsonResponse({"error": f"Start location '{start_name}' not found, please check spelling."}, status=404)
+
+    end_point = _geocode_place(end_name)
+    if not end_point:
+        return JsonResponse({"error": f"Destination '{end_name}' not found, please check spelling."}, status=404)
+
+    routes = _get_osrm_routes(start_point["lat"], start_point["lng"], end_point["lat"], end_point["lng"])
+    if not routes:
+        return JsonResponse({"error": "No route could be found between these locations. Please try again."}, status=502)
+
+    results = []
+    for route in routes:
+        coords = route["geometry"]["coordinates"]  # [[lng, lat], ...]
+        matched = _match_hotspots_to_route(coords)
+
+        if matched:
+            avg_risk = round(sum(h["avg_risk_score"] for h in matched) / len(matched), 3)
+            total_risk = round(sum(h["avg_risk_score"] for h in matched), 3)
+            high_count = sum(1 for h in matched if h["risk_level"] == "High")
+        else:
+            avg_risk = None
+            total_risk = None
+            high_count = 0
+
+        results.append({
+            "distance_km": round(route["distance"] / 1000, 2),
+            "duration_min": round(route["duration"] / 60, 1),
+            "polyline": [[c[1], c[0]] for c in coords],  # convert to [lat, lng] for Leaflet
+            "matched_hotspots": matched,
+            "match_count": len(matched),
+            "high_risk_count": high_count,
+            "avg_risk_score": avg_risk,
+            "total_risk_score": total_risk,
+            "no_data": len(matched) == 0,
+        })
+
+    scored_routes = [r for r in results if not r["no_data"]]
+    if scored_routes:
+        best_index = results.index(min(scored_routes, key=lambda r: r["total_risk_score"]))
+    else:
+        best_index = 0
+
+    return JsonResponse({
+        "start": {"name": start_name, **start_point},
+        "end": {"name": end_name, **end_point},
+        "routes": results,
+        "recommended_index": best_index,
+    })
 
 
 def hotspot_json(request):

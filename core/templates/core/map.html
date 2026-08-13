@@ -67,6 +67,26 @@
     </div>
 </div>
 
+<!-- Route Risk Panel -->
+<div id="routeRiskPanel" class="card m-3">
+    <div class="card-body">
+        <h5 class="mb-3">🛣️ Route Risk Check</h5>
+        <div class="row g-2">
+            <div class="col-md-5">
+                <input type="text" id="routeStart" placeholder="Start location" class="form-control">
+            </div>
+            <div class="col-md-5">
+                <input type="text" id="routeEnd" placeholder="Destination" class="form-control">
+            </div>
+            <div class="col-md-2">
+                <button id="routeRiskBtn" class="btn btn-primary w-100">Check Route</button>
+            </div>
+        </div>
+        <div id="routeRiskError" class="alert alert-warning mt-2" style="display:none;"></div>
+        <div id="routeRiskSummary" class="mt-2"></div>
+    </div>
+</div>
+
 <div id="map"></div>
 
     <button id="resetZoomBtn" style="
@@ -505,6 +525,104 @@
         });
       })
       .catch(error => console.error("Error loading hotspots:", error));
+
+    
+    // ---------- Route Risk Feature ----------
+    let routeLayers = [];
+
+    document.getElementById('routeRiskBtn').addEventListener('click', checkRouteRisk);
+
+    function checkRouteRisk() {
+        const start = document.getElementById('routeStart').value.trim();
+        const end = document.getElementById('routeEnd').value.trim();
+        const errorBox = document.getElementById('routeRiskError');
+        const summaryBox = document.getElementById('routeRiskSummary');
+
+        errorBox.style.display = 'none';
+        summaryBox.innerHTML = '';
+
+        if (!start || !end) {
+            errorBox.textContent = 'Please enter both start and destination.';
+            errorBox.style.display = 'block';
+            return;
+        }
+
+        // Clear any previously drawn routes/markers
+        routeLayers.forEach(layer => map.removeLayer(layer));
+        routeLayers = [];
+
+        fetch(`/api/route-risk/?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`)
+            .then(response => response.json().then(data => ({ ok: response.ok, data })))
+            .then(({ ok, data }) => {
+                if (!ok) {
+                    errorBox.textContent = data.error || 'Something went wrong. Please try again.';
+                    errorBox.style.display = 'block';
+                    return;
+                }
+                drawRoutes(data);
+            })
+            .catch(() => {
+                errorBox.textContent = 'Could not reach the routing service. Please try again.';
+                errorBox.style.display = 'block';
+            });
+    }
+
+    function drawRoutes(data) {
+        const bounds = [];
+
+        data.routes.forEach((route, i) => {
+            const isBest = i === data.recommended_index;
+            const color = isBest ? '#007bff' : '#888888';
+            const weight = isBest ? 6 : 3;
+            const opacity = isBest ? 0.9 : 0.5;
+
+            const poly = L.polyline(route.polyline, { color, weight, opacity }).addTo(map);
+            routeLayers.push(poly);
+            route.polyline.forEach(p => bounds.push(p));
+
+            if (isBest) {
+                route.matched_hotspots.forEach(h => {
+                    const marker = L.circleMarker([h.lat, h.lng], {
+                        radius: 10,
+                        color: '#ff0000',
+                        fillColor: '#ff0000',
+                        fillOpacity: 0.6,
+                        weight: 2
+                    }).addTo(map);
+                    marker.bindPopup(
+                        `<b>${h.area_name}</b><br>Risk: ${h.risk_level}<br>Score: ${h.avg_risk_score}`
+                    );
+                    routeLayers.push(marker);
+                });
+            }
+        });
+
+        if (bounds.length) map.fitBounds(bounds);
+
+        showRouteRiskSummary(data);
+    }
+
+    function showRouteRiskSummary(data) {
+        const summaryBox = document.getElementById('routeRiskSummary');
+        let html = '';
+
+        data.routes.forEach((route, i) => {
+            const label = i === data.recommended_index ? '⭐ Recommended' : `Alternative ${i + 1}`;
+            const riskText = route.no_data
+                ? 'No accident data available for this route.'
+                : `Risk score: ${route.total_risk_score} (${route.match_count} hotspot(s), ${route.high_risk_count} high-risk)`;
+
+            html += `
+                <div class="border rounded p-2 mb-2">
+                    <strong>${label}</strong><br>
+                    ${route.distance_km} km, ${route.duration_min} min<br>
+                    ${riskText}
+                </div>
+            `;
+        });
+
+        summaryBox.innerHTML = html;
+    }
 </script>
 
 </body>
