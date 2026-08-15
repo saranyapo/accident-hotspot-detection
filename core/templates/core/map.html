@@ -177,6 +177,10 @@
 
         document.getElementById("citySummary").style.display = "none";
         document.getElementById("highRiskAlert").style.display = "none";
+
+        // ADDED:
+        // Clear previous Route Risk result when Reset View is clicked
+        clearRouteRiskResults();
     });
 
     // Location search
@@ -190,6 +194,10 @@
         const query = document.getElementById("searchBox").value.trim();
 
         if (!query) return;
+
+        // ADDED:
+        // Clear previous Route Risk result when a new location is searched
+        clearRouteRiskResults();
 
         fetch("/api/geocode/?q=" + encodeURIComponent(query))
             .then(response => response.json())
@@ -421,12 +429,16 @@
         // Remove duplicate recommendations
         return [...new Set(recommendations)];
     }
+
+
     // Fetch hotspot clusters and plot them
     fetch("/api/hotspots/")
       .then(response => response.json())
       .then(data => {
         hotspotData = data.hotspots; // save for coverage checks
+
         data.hotspots.forEach(function(spot) {
+
           var color = spot.risk_level === "High" ? "red" :
                       spot.risk_level === "Medium" ? "orange" : "green";
 
@@ -526,9 +538,46 @@
       })
       .catch(error => console.error("Error loading hotspots:", error));
 
+
     
     // ---------- Route Risk Feature ----------
     let routeLayers = [];
+
+
+    // =========================================================
+    // ADDED:
+    // Function to clear the previous Route Risk result
+    // =========================================================
+
+    function clearRouteRiskResults() {
+
+        // Remove previously drawn route lines
+        // and route hotspot markers
+        routeLayers.forEach(layer => {
+
+            if (map.hasLayer(layer)) {
+                map.removeLayer(layer);
+            }
+
+        });
+
+        routeLayers = [];
+
+
+        // Clear previous route error
+        document.getElementById('routeRiskError').style.display = 'none';
+        document.getElementById('routeRiskError').textContent = '';
+
+
+        // Clear previous route summary
+        document.getElementById('routeRiskSummary').innerHTML = '';
+
+
+        // Clear route input fields
+        document.getElementById('routeStart').value = '';
+        document.getElementById('routeEnd').value = '';
+    }
+
 
     document.getElementById('routeRiskBtn').addEventListener('click', checkRouteRisk);
 
@@ -589,9 +638,11 @@
                         fillOpacity: 0.6,
                         weight: 2
                     }).addTo(map);
+
                     marker.bindPopup(
                         `<b>${h.area_name}</b><br>Risk: ${h.risk_level}<br>Score: ${h.avg_risk_score}`
                     );
+
                     routeLayers.push(marker);
                 });
             }
