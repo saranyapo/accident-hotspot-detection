@@ -161,8 +161,9 @@
     // Center roughly on India
     const map = L.map('map').setView([10.3, 76.3], 7);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
+    L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
     let hotspotData = []; // store fetched hotspots for distance checks
@@ -653,15 +654,49 @@
         showRouteRiskSummary(data);
     }
 
+    // =========================================================
+    // ADDED:
+    // Toggle the hotspot-name list open/closed when the
+    // "X hotspot(s), Y high-risk" text is clicked
+    // =========================================================
+    function toggleHotspotList(el) {
+        const container = el.closest('.route-risk-text');
+        const list = container.querySelector('.hotspot-name-list');
+        const isHidden = list.style.display === "none";
+        list.style.display = isHidden ? "block" : "none";
+        el.innerHTML = el.innerHTML.replace(isHidden ? "▼" : "▲", isHidden ? "▲" : "▼");
+    }
+
     function showRouteRiskSummary(data) {
         const summaryBox = document.getElementById('routeRiskSummary');
         let html = '';
 
         data.routes.forEach((route, i) => {
             const label = i === data.recommended_index ? '⭐ Recommended' : `Alternative ${i + 1}`;
-            const riskText = route.no_data
-                ? 'No accident data available for this route.'
-                : `Risk score: ${route.total_risk_score} (${route.match_count} hotspot(s), ${route.high_risk_count} high-risk)`;
+
+            let riskText;
+            if (route.no_data) {
+                riskText = 'No accident data available for this route.';
+            } else {
+                // Build the list of hotspot names/risk levels for this route
+                const hotspotListItems = route.matched_hotspots.map(h => {
+                    const emoji = h.risk_level === "High" ? "🔴" :
+                                  h.risk_level === "Medium" ? "🟠" : "🟢";
+                    const label = h.area_name || h.city;
+                    return `<li>${emoji} ${label}</li>`;
+                }).join('');
+
+                // ADDED: clickable count span + hidden list of place names
+                riskText = `
+                    <div class="route-risk-text">
+                        Risk score: ${route.total_risk_score}
+                        (<span class="hotspot-toggle" style="cursor:pointer; text-decoration:underline; color:#0d6efd;" onclick="toggleHotspotList(this)">${route.match_count} hotspot(s), ${route.high_risk_count} high-risk ▼</span>)
+                        <ul class="hotspot-name-list" style="display:none; margin-top:6px; margin-bottom:0; padding-left:18px;">
+                            ${hotspotListItems}
+                        </ul>
+                    </div>
+                `;
+            }
 
             html += `
                 <div class="border rounded p-2 mb-2">
