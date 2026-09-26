@@ -35,37 +35,85 @@ def _get_osrm_routes(start_lat, start_lng, end_lat, end_lng):
     return data["routes"]
 
 
-HOTSPOT_MATCH_RADIUS_KM = 1.5
+HOTSPOT_MATCH_RADIUS_KM = 0.3  # ~300m — "essentially on the route"
+
+
+def _point_to_segment_distance_km(lat, lng, lat1, lng1, lat2, lng2):
+    """
+    Perpendicular distance in km from point (lat, lng) to the line
+    segment between (lat1, lng1) and (lat2, lng2) — not just to the
+    two endpoints. Projects onto a local flat km-plane centered on the
+    segment's midpoint (fine for short segments like route steps),
+    clamps the projection to the segment so points near a sharp turn
+    don't get an artificially short distance.
+    """
+    # Local flat-earth approximation: convert lat/lng degrees to km
+    # using the segment midpoint's latitude for the longitude scale
+    lat_mid = (lat1 + lat2) / 2
+    km_per_deg_lat = 111.32
+    km_per_deg_lng = 111.32 * math.cos(math.radians(lat_mid))
+
+    # Segment endpoints and point, in local km coordinates (x=lng, y=lat)
+    x1, y1 = lng1 * km_per_deg_lng, lat1 * km_per_deg_lat
+    x2, y2 = lng2 * km_per_deg_lng, lat2 * km_per_deg_lat
+    px, py = lng * km_per_deg_lng, lat * km_per_deg_lat
+
+    dx, dy = x2 - x1, y2 - y1
+    seg_len_sq = dx * dx + dy * dy
+
+    if seg_len_sq == 0:
+        # Degenerate segment (both points identical) — just point distance
+        return haversine_distance(lat, lng, lat1, lng1)
+
+    # Project point onto the segment, clamped to [0, 1]
+    t = ((px - x1) * dx + (py - y1) * dy) / seg_len_sq
+    t = max(0.0, min(1.0, t))
+
+    closest_x = x1 + t * dx
+    closest_y = y1 + t * dy
+
+    return math.hypot(px - closest_x, py - closest_y)
+
 
 def _match_hotspots_to_route(coords):
     """
     coords: list of [lng, lat] pairs from OSRM's geojson geometry.
-    Returns matched hotspots (deduplicated) within HOTSPOT_MATCH_RADIUS_KM of any point.
+    Returns matched hotspots (deduplicated) within HOTSPOT_MATCH_RADIUS_KM
+    of the route's actual line (nearest segment), not just its vertices.
     """
     all_hotspots = HotspotCluster.objects.all()
     matched = {}
 
-    # Sample points if the route is very long, so we're not checking
-    # hundreds of points against every hotspot
-    sample_coords = coords[::3] if len(coords) > 300 else coords
+    for h in all_hotspots:
+        best_dist = None
 
-    for lng, lat in sample_coords:
-        for h in all_hotspots:
-            if h.id in matched:
-                continue
-            dist = haversine_distance(lat, lng, h.center_lat, h.center_lng)
-            if dist <= HOTSPOT_MATCH_RADIUS_KM:
-                matched[h.id] = {
-                    "id": h.id,
-                    "city": h.city,
-                    "area_name": h.area_name,
-                    "risk_level": h.risk_level,
-                    "avg_risk_score": round(h.avg_risk_score, 3),
-                    "accident_count": h.accident_count,
-                    "lat": h.center_lat,
-                    "lng": h.center_lng,
-                    "distance_km": round(dist, 2),
-                }
+        for i in range(len(coords) - 1):
+            lng1, lat1 = coords[i]
+            lng2, lat2 = coords[i + 1]
+
+            dist = _point_to_segment_distance_km(
+                h.center_lat, h.center_lng, lat1, lng1, lat2, lng2
+            )
+
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+
+            # Early exit: can't get closer than "on the route"
+            if best_dist == 0:
+                break
+
+        if best_dist is not None and best_dist <= HOTSPOT_MATCH_RADIUS_KM:
+            matched[h.id] = {
+                "id": h.id,
+                "city": h.city,
+                "area_name": h.area_name,
+                "risk_level": h.risk_level,
+                "avg_risk_score": round(h.avg_risk_score, 3),
+                "accident_count": h.accident_count,
+                "lat": h.center_lat,
+                "lng": h.center_lng,
+                "distance_km": round(best_dist, 3),
+            }
 
     return list(matched.values())
 

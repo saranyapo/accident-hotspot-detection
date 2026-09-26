@@ -10,6 +10,9 @@
     <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 
+    <!-- Leaflet.markercluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <style>
         #map {
             height: 85vh;
@@ -157,6 +160,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
+    <!-- Leaflet.markercluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script>
     // Center roughly on India
     const map = L.map('map').setView([10.3, 76.3], 7);
@@ -167,6 +172,46 @@
     }).addTo(map);
 
     let hotspotData = []; // store fetched hotspots for distance checks
+
+    // Cluster group for hotspot markers — groups markers that are
+    // genuinely overlapping (same named location) and spiderfies them
+    // apart on click. maxClusterRadius kept small so it does NOT merge
+    // hotspots that are legitimately spread across a city.
+    const hotspotClusterGroup = L.markerClusterGroup({
+        maxClusterRadius: 40,        // px — only tightly overlapping markers group
+        spiderfyOnMaxZoom: true,
+        showCoverageOnHover: false,
+        zoomToBoundsOnClick: true,
+        iconCreateFunction: function(cluster) {
+            const markers = cluster.getAllChildMarkers();
+            const colors = markers.map(m => m.options.fillColor);
+
+            // Cluster bubble color reflects the worst risk level inside it
+            let bubbleColor = 'green';
+            if (colors.includes('red')) bubbleColor = 'red';
+            else if (colors.includes('orange')) bubbleColor = 'orange';
+
+            return L.divIcon({
+                html: `<div style="
+                    background:${bubbleColor};
+                    color:white;
+                    border-radius:50%;
+                    width:34px;
+                    height:34px;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                    font-weight:bold;
+                    font-size:13px;
+                    border:2px solid white;
+                    box-shadow:0 0 4px rgba(0,0,0,0.5);
+                ">${markers.length}</div>`,
+                className: '',
+                iconSize: [34, 34]
+            });
+        }
+    });
+    map.addLayer(hotspotClusterGroup);
 
     const COVERAGE_RADIUS_KM = 50; // "is there any data nearby at all" check
     const SUMMARY_RADIUS_KM = 15;  // "what's near this specific searched place" for the summary card
@@ -222,14 +267,19 @@
             // Check whether hotspot data exists nearby
                 checkCoverage(data.lat, data.lng);
 
-            // Find hotspots near searched location
+            // Find hotspots near the searched location, using a radius
+            // derived from the current view (distance from center to the
+            // edge of the visible map) instead of a fixed km number or
+            // rectangle containment — this stays consistent regardless
+            // of screen size/shape, and catches nearby places (Aluva,
+            // Kalamassery) that a narrow viewport would otherwise cut off
+                const bounds = map.getBounds();
+                const viewRadiusKm = distanceKm(
+                    data.lat, data.lng,
+                    bounds.getNorthEast().lat, bounds.getNorthEast().lng
+                );
                 const nearbyClusters = hotspotData.filter(spot =>
-                    distanceKm(
-                        data.lat,
-                        data.lng,
-                        spot.lat,
-                        spot.lng
-                    ) <= SUMMARY_RADIUS_KM
+                    distanceKm(data.lat, data.lng, spot.lat, spot.lng) <= viewRadiusKm
                 );
 
                 if (nearbyClusters.length === 0) {
@@ -534,7 +584,7 @@
 
                 "</div>"
             )
-          .addTo(map);
+          .addTo(hotspotClusterGroup);
         });
       })
       .catch(error => console.error("Error loading hotspots:", error));
@@ -563,6 +613,11 @@
         });
 
         routeLayers = [];
+
+        // ADDED: restore the base hotspot layer whenever route results are cleared
+        if (!map.hasLayer(hotspotClusterGroup)) {
+            map.addLayer(hotspotClusterGroup);
+        }
 
 
         // Clear previous route error
@@ -618,6 +673,12 @@
     }
 
     function drawRoutes(data) {
+        // ADDED: hide the base hotspot layer once a route is found —
+        // only route-matched hotspots should show now
+        if (map.hasLayer(hotspotClusterGroup)) {
+            map.removeLayer(hotspotClusterGroup);
+        }
+       
         const bounds = [];
 
         data.routes.forEach((route, i) => {
