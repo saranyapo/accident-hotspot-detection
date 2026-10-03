@@ -1,9 +1,14 @@
-from django.http import JsonResponse
-from django.shortcuts import render
-from .models import Accident, HotspotCluster
-from geopy.geocoders import Nominatim
+import os
 import math
 import requests
+from django.http import JsonResponse
+from django.shortcuts import render
+from django.core.validators import validate_email
+from django.core.exceptions import ValidationError
+from django.views.decorators.http import require_POST, require_GET
+from .models import Accident, HotspotCluster, UserReport
+from geopy.geocoders import Nominatim
+
 
 def haversine_distance(lat1, lng1, lat2, lng2):
     """Returns distance in km between two lat/lng points."""
@@ -15,6 +20,7 @@ def haversine_distance(lat1, lng1, lat2, lng2):
          * math.sin(dlng / 2) ** 2)
     c = 2 * math.asin(math.sqrt(a))
     return R * c
+
 
 def _get_osrm_routes(start_lat, start_lng, end_lat, end_lng):
     url = (
@@ -402,3 +408,134 @@ def geocode_search(request):
             {'error': 'Geocoding service unavailable'},
             status=503
         )
+
+
+# =====================================================================
+# Community Reporting Feature APIs
+# =====================================================================
+
+COVERAGE_RADIUS_KM = 50.0  # Same threshold as map check
+
+
+@require_POST
+def submit_report(request):
+    """
+    Handles submission of community hazard reports by public users.
+    Validates input fields, computes dataset coverage status, and saves
+    the report with status='Pending' for admin review.
+    """
+    name = request.POST.get("name", "").strip()
+    email = request.POST.get("email", "").strip()
+    lat_str = request.POST.get("latitude", "").strip()
+    lng_str = request.POST.get("longitude", "").strip()
+    issue_type = request.POST.get("issue_type", "").strip()
+    description = request.POST.get("description", "").strip()
+    photo = request.FILES.get("photo")
+
+    # 1. Validate Name
+    if not name:
+        return JsonResponse({"error": "Please provide your name."}, status=400)
+    if len(name) > 100:
+        return JsonResponse({"error": "Name cannot exceed 100 characters."}, status=400)
+
+    # 2. Validate Email
+    if not email:
+        return JsonResponse({"error": "Please provide an email address."}, status=400)
+    try:
+        validate_email(email)
+    except ValidationError:
+        return JsonResponse({"error": "Please provide a valid email address."}, status=400)
+
+    # 3. Validate Coordinates
+    if not lat_str or not lng_str:
+        return JsonResponse({"error": "Please select a location on the map or via search."}, status=400)
+    try:
+        latitude = float(lat_str)
+        longitude = float(lng_str)
+    except ValueError:
+        return JsonResponse({"error": "Invalid coordinates provided."}, status=400)
+
+    if not (-90.0 <= latitude <= 90.0) or not (-180.0 <= longitude <= 180.0):
+        return JsonResponse({"error": "Coordinates are out of valid geographic range."}, status=400)
+
+    # 4. Validate Issue Type
+    valid_issue_types = dict(UserReport.ISSUE_TYPES)
+    if issue_type not in valid_issue_types:
+        return JsonResponse({"error": "Please select a valid issue type."}, status=400)
+
+    # 5. Validate Description
+    if not description:
+        return JsonResponse({"error": "Please provide a description of the road issue."}, status=400)
+    if len(description) > 1000:
+        return JsonResponse({"error": "Description cannot exceed 1000 characters."}, status=400)
+
+    # 6. Validate Optional Photo
+    if photo:
+        # Check file size (max 5 MB)
+        if photo.size > 5 * 1024 * 1024:
+            return JsonResponse({"error": "Photo file size cannot exceed 5 MB."}, status=400)
+
+        # Check file extension and mime type
+        ext = os.path.splitext(photo.name)[1].lower()
+        allowed_extensions = ['.jpg', '.jpeg', '.png']
+        allowed_types = ['image/jpeg', 'image/png', 'image/jpg']
+        if ext not in allowed_extensions or (photo.content_type and photo.content_type.lower() not in allowed_types):
+            return JsonResponse({"error": "Only JPG and PNG images are allowed."}, status=400)
+
+    # 7. Compute Coverage Status based on nearest HotspotCluster
+    is_in_coverage = False
+    all_clusters = HotspotCluster.objects.all()
+    for cluster in all_clusters:
+        dist = haversine_distance(latitude, longitude, cluster.center_lat, cluster.center_lng)
+        if dist <= COVERAGE_RADIUS_KM:
+            is_in_coverage = True
+            break
+
+    coverage_status = "InCoverage" if is_in_coverage else "OutOfCoverage"
+
+    # 8. Save report to database
+    report = UserReport.objects.create(
+        name=name,
+        email=email,
+        latitude=latitude,
+        longitude=longitude,
+        issue_type=issue_type,
+        description=description,
+        photo=photo,
+        status="Pending",
+        coverage_status=coverage_status,
+    )
+
+    return JsonResponse({
+        "success": True,
+        "message": "Report submitted, pending admin approval.",
+        "report_id": report.id
+    })
+
+
+@require_GET
+def approved_reports_json(request):
+    """
+    Returns only Approved community hazard reports for the Leaflet map overlay.
+    Public view: NEVER includes user email for privacy.
+    """
+    approved_reports = UserReport.objects.filter(status="Approved").order_by("-timestamp")
+    reports_data = []
+
+    for r in approved_reports:
+        # Date format: e.g. "14 Aug 2026"
+        formatted_date = f"{r.timestamp.day} {r.timestamp.strftime('%b %Y')}"
+
+        reports_data.append({
+            "id": r.id,
+            "lat": r.latitude,
+            "lng": r.longitude,
+            "issue_type": r.get_issue_type_display(),
+            "description": r.description,
+            "reported_by": r.name,
+            "date": formatted_date,
+            "photo_url": r.photo.url if r.photo else None,
+            "coverage_status": r.coverage_status,
+        })
+
+    return JsonResponse({"reports": reports_data})

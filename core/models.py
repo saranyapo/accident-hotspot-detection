@@ -61,3 +61,47 @@ class HotspotCluster(models.Model):
 
     def __str__(self):
         return f"{self.city} - Cluster {self.cluster_id} ({self.risk_level})"
+
+
+class UserReport(models.Model):
+    """
+    Community hazard report submitted by public users.
+    Status can be reviewed, approved, or rejected by admin.
+    """
+    ISSUE_TYPES = [
+        ('pothole', 'Pothole'),
+        ('signal_failure', 'Traffic Signal Failure'),
+        ('unsafe_crossing', 'Unsafe Pedestrian Crossing'),
+        ('poor_lighting', 'Poor Street Lighting'),
+        ('missing_signage', 'Missing Road Signage'),
+        ('other', 'Other Safety Issue'),
+    ]
+
+    STATUS_CHOICES = [
+        ('Pending', 'Pending'),
+        ('Approved', 'Approved'),
+        ('Rejected', 'Rejected'),
+    ]
+
+    COVERAGE_CHOICES = [
+        ('InCoverage', 'InCoverage'),
+        ('OutOfCoverage', 'OutOfCoverage'),
+    ]
+
+    name = models.CharField(max_length=100)
+    email = models.EmailField()
+    latitude = models.FloatField()
+    longitude = models.FloatField()
+    issue_type = models.CharField(max_length=50, choices=ISSUE_TYPES)
+    description = models.TextField()
+    photo = models.ImageField(upload_to='reports/', null=True, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='Pending')
+    coverage_status = models.CharField(max_length=20, choices=COVERAGE_CHOICES, default='InCoverage')
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "user_reports"
+        ordering = ['-timestamp']
+
+    def __str__(self):
+        return f"Report #{self.id} - {self.get_issue_type_display()} by {self.name} ({self.status})"

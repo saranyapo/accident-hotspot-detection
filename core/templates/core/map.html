@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Road Accident Hotspot Map</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Accident Hotspot Detection and Community Reporting</title>
 
     <!-- Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -13,146 +14,286 @@
     <!-- Leaflet.markercluster CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
     <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    
     <style>
+        body {
+            background-color: #f8f9fa;
+        }
         #map {
-            height: 85vh;
+            height: 82vh;
             width: 100%;
+        }
+        /* Custom Layer Control styling */
+        .leaflet-control-layers {
+            background: #ffffff !important;
+            padding: 10px 14px !important;
+            border: 2px solid #333 !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
+            font-size: 13px !important;
+        }
+        /* Tab styling for combined popup */
+        .popup-tab-btn {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid #0d6efd;
+            background: #fff;
+            color: #0d6efd;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+        .popup-tab-btn.active {
+            background: #0d6efd;
+            color: #ffffff;
+        }
+        .popup-tab-pane {
+            max-height: 320px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .custom-popup-img {
+            max-width: 100%;
+            max-height: 160px;
+            object-fit: cover;
+            border-radius: 6px;
+            border: 1px solid #dee2e6;
+            margin-top: 6px;
+        }
+        .picking-active {
+            cursor: crosshair !important;
         }
     </style>
 </head>
 <body>
 
-    <nav class="navbar navbar-dark bg-dark px-3">
-        <span class="navbar-brand mb-0 h1">Road Accident Hotspot Detection</span>
-        <div class="d-flex ms-auto">
-            <input type="text" id="searchBox" placeholder="Search a location..." class="form-control me-2" style="width:250px;">
-            <button id="searchBtn" class="btn btn-primary">Search</button>
+    <!-- Navigation Bar -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark px-3 py-2">
+        <div class="container-fluid px-0">
+            <span class="navbar-brand mb-0 h1 fw-bold">🚦 Road Accident Hotspot Detection</span>
+            <div class="d-flex flex-wrap align-items-center gap-2 ms-auto mt-2 mt-lg-0">
+                <button type="button" class="btn btn-warning fw-bold text-dark shadow-sm" data-bs-toggle="modal" data-bs-target="#reportModal" id="openReportModalBtn">
+                    ⚠️ Report Road Hazard
+                </button>
+                <div class="d-flex">
+                    <input type="text" id="searchBox" placeholder="Search Kerala location..." class="form-control me-2" style="min-width:200px; max-width:260px;">
+                    <button id="searchBtn" class="btn btn-primary fw-semibold">Search</button>
+                </div>
+            </div>
         </div>
     </nav>
 
     <!-- High Risk Alert -->
-<div id="highRiskAlert" class="container mt-3" style="display: none;">
-</div>
-
+    <div id="highRiskAlert" class="container mt-3" style="display: none;"></div>
 
     <!-- City Safety Summary -->
-<div id="citySummary" class="card m-3" style="display: none;">
-    <div class="card-body">
-
-        <h4 id="summaryCity" class="mb-3">
-            City Safety Summary
-        </h4>
-
-        <div class="row text-center">
-
-            <div class="col">
-                <h5 id="summaryHotspots">0</h5>
-                <small>Hotspots</small>
-            </div>
-
-            <div class="col">
-                <h5 id="summaryHigh">0</h5>
-                <small>High Risk</small>
-            </div>
-
-            <div class="col">
-                <h5 id="summaryMedium">0</h5>
-                <small>Medium Risk</small>
-            </div>
-
-            <div class="col">
-                <h5 id="summaryLow">0</h5>
-                <small>Low Risk</small>
-            </div>
-
-        </div>
-
-    </div>
-</div>
-
-<!-- Route Risk Panel -->
-<div id="routeRiskPanel" class="card m-3">
-    <div class="card-body">
-        <h5 class="mb-3">🛣️ Route Risk Check</h5>
-        <div class="row g-2">
-            <div class="col-md-5">
-                <input type="text" id="routeStart" placeholder="Start location" class="form-control">
-            </div>
-            <div class="col-md-5">
-                <input type="text" id="routeEnd" placeholder="Destination" class="form-control">
-            </div>
-            <div class="col-md-2">
-                <button id="routeRiskBtn" class="btn btn-primary w-100">Check Route</button>
+    <div id="citySummary" class="card m-3 shadow-sm" style="display: none;">
+        <div class="card-body">
+            <h4 id="summaryCity" class="mb-3">City Safety Summary</h4>
+            <div class="row text-center">
+                <div class="col">
+                    <h5 id="summaryHotspots" class="fw-bold">0</h5>
+                    <small class="text-muted">Hotspots</small>
+                </div>
+                <div class="col text-danger">
+                    <h5 id="summaryHigh" class="fw-bold">0</h5>
+                    <small>High Risk</small>
+                </div>
+                <div class="col text-warning">
+                    <h5 id="summaryMedium" class="fw-bold">0</h5>
+                    <small>Medium Risk</small>
+                </div>
+                <div class="col text-success">
+                    <h5 id="summaryLow" class="fw-bold">0</h5>
+                    <small>Low Risk</small>
+                </div>
             </div>
         </div>
-        <div id="routeRiskError" class="alert alert-warning mt-2" style="display:none;"></div>
-        <div id="routeRiskSummary" class="mt-2"></div>
     </div>
-</div>
 
-<div id="map"></div>
+    <!-- Route Risk Panel -->
+    <div id="routeRiskPanel" class="card m-3 shadow-sm">
+        <div class="card-body">
+            <h5 class="mb-3 fw-bold">🛣️ Route Risk Check</h5>
+            <div class="row g-2">
+                <div class="col-md-5">
+                    <input type="text" id="routeStart" placeholder="Start location (e.g. Kochi)" class="form-control">
+                </div>
+                <div class="col-md-5">
+                    <input type="text" id="routeEnd" placeholder="Destination (e.g. Aluva)" class="form-control">
+                </div>
+                <div class="col-md-2">
+                    <button id="routeRiskBtn" class="btn btn-primary w-100 fw-semibold">Check Route</button>
+                </div>
+            </div>
+            <div id="routeRiskError" class="alert alert-warning mt-2" style="display:none;"></div>
+            <div id="routeRiskSummary" class="mt-2"></div>
+        </div>
+    </div>
 
+    <!-- Map Container -->
+    <div id="map"></div>
+
+    <!-- Reset Zoom Button -->
     <button id="resetZoomBtn" style="
-    position: fixed;
-    top: 80px;
-    right: 20px;
-    z-index: 1000;
-    padding: 8px 14px;
-    background: white;
-    border: 2px solid #333;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: bold;
-">Reset View</button>
+        position: fixed;
+        top: 80px;
+        right: 20px;
+        z-index: 1000;
+        padding: 8px 14px;
+        background: white;
+        border: 2px solid #333;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    ">Reset View</button>
 
-<div id="legend" style="
-    position: fixed;
-    bottom: 30px;
-    left: 20px;
-    z-index: 1000;
-    background: white;
-    padding: 10px 14px;
-    border: 2px solid #333;
-    border-radius: 6px;
-    font-size: 14px;
-">
-    <b>Risk Level</b><br>
-    <span style="color:red;">&#9679;</span> High<br>
-    <span style="color:orange;">&#9679;</span> Medium<br>
-    <span style="color:green;">&#9679;</span> Low
-</div>
+    <!-- Legend -->
+    <div id="legend" style="
+        position: fixed;
+        bottom: 25px;
+        left: 20px;
+        z-index: 1000;
+        background: white;
+        padding: 10px 14px;
+        border: 2px solid #333;
+        border-radius: 6px;
+        font-size: 13px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    ">
+        <b>Accident Risk Level</b><br>
+        <span style="color:red;">&#9679;</span> High Risk<br>
+        <span style="color:orange;">&#9679;</span> Medium Risk<br>
+        <span style="color:green;">&#9679;</span> Low Risk<br>
+        <hr style="margin: 6px 0;">
+        <b>Community Reports</b><br>
+        <span style="color:#0d6efd; font-size:16px;">📍</span> Approved Report
+    </div>
 
-<div id="noDataMsg" style="
-    display: none;
-    position: fixed;
-    top: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    background: #e0e0e0;
-    color: #333;
-    padding: 10px 20px;
-    border: 2px solid #999;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: bold;
-">No accident data available for this location</div>
+    <!-- Informational Messages -->
+    <div id="noDataMsg" style="
+        display: none;
+        position: fixed;
+        top: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: #e0e0e0;
+        color: #333;
+        padding: 10px 20px;
+        border: 2px solid #999;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    ">No accident data available for this location</div>
 
-<div id="searchErrorMsg" style="
-    display: none;
-    position: fixed;
-    top: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 1000;
-    background: #f8d7da;
-    color: #721c24;
-    padding: 10px 20px;
-    border: 2px solid #f5c6cb;
-    border-radius: 6px;
-    font-size: 14px;
-    font-weight: bold;
-"></div>
+    <div id="searchErrorMsg" style="
+        display: none;
+        position: fixed;
+        top: 100px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 1000;
+        background: #f8d7da;
+        color: #721c24;
+        padding: 10px 20px;
+        border: 2px solid #f5c6cb;
+        border-radius: 6px;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+    "></div>
+
+    <!-- Community Report Modal -->
+    <div class="modal fade" id="reportModal" tabindex="-1" aria-labelledby="reportModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold" id="reportModalLabel">📢 Report Road Hazard / Unsafe Condition</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <!-- Form Feedback Alert (Success / Error) -->
+                    <div id="reportAlert" class="alert d-none" role="alert"></div>
+
+                    <form id="reportForm" enctype="multipart/form-data">
+                        {% csrf_token %}
+                        <div class="row g-3">
+                            <!-- Name -->
+                            <div class="col-md-6">
+                                <label for="reportName" class="form-label fw-semibold">Your Name <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="reportName" name="name" placeholder="e.g. Rahul Nair" required maxlength="100">
+                            </div>
+
+                            <!-- Email -->
+                            <div class="col-md-6">
+                                <label for="reportEmail" class="form-label fw-semibold">Email Address <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" id="reportEmail" name="email" placeholder="name@example.com" required>
+                                <div class="form-text text-muted" style="font-size: 12px;">🔒 Only for admin review, not shown publicly.</div>
+                            </div>
+
+                            <!-- Location Section -->
+                            <div class="col-12">
+                                <label class="form-label fw-semibold">Hazard Location <span class="text-danger">*</span></label>
+                                <div class="input-group mb-2">
+                                    <input type="text" class="form-control" id="reportAddressSearch" placeholder="Type a place or landmark to search...">
+                                    <button class="btn btn-outline-secondary" type="button" id="reportGeocodeBtn">🔍 Search Address</button>
+                                    <button class="btn btn-outline-primary" type="button" id="reportPickMapBtn">📍 Pick on Map</button>
+                                </div>
+                                <div id="reportLocationDisplay" class="alert alert-light border py-2 px-3 small text-muted mb-0">
+                                    No location selected. Click "Pick on Map" or search an address.
+                                </div>
+                                <!-- Hidden inputs for lat & lng -->
+                                <input type="hidden" id="reportLatitude" name="latitude">
+                                <input type="hidden" id="reportLongitude" name="longitude">
+                            </div>
+
+                            <!-- Issue Type -->
+                            <div class="col-md-6">
+                                <label for="reportIssueType" class="form-label fw-semibold">Issue Type <span class="text-danger">*</span></label>
+                                <select class="form-select" id="reportIssueType" name="issue_type" required>
+                                    <option value="" disabled selected>Select an issue...</option>
+                                    <option value="pothole">Pothole / Road Damage</option>
+                                    <option value="signal_failure">Traffic Signal Failure</option>
+                                    <option value="unsafe_crossing">Unsafe Pedestrian Crossing</option>
+                                    <option value="poor_lighting">Poor Street Lighting</option>
+                                    <option value="missing_signage">Missing Road Signage</option>
+                                    <option value="other">Other Safety Issue</option>
+                                </select>
+                            </div>
+
+                            <!-- Photo Upload -->
+                            <div class="col-md-6">
+                                <label for="reportPhoto" class="form-label fw-semibold">Photo (Optional)</label>
+                                <input class="form-control" type="file" id="reportPhoto" name="photo" accept=".jpg,.jpeg,.png,image/jpeg,image/png">
+                                <div class="form-text text-muted" style="font-size: 12px;">JPG or PNG, max 5 MB.</div>
+                            </div>
+
+                            <!-- Description -->
+                            <div class="col-12">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <label for="reportDescription" class="form-label fw-semibold">Description <span class="text-danger">*</span></label>
+                                    <small id="descCharCount" class="text-muted">0 / 1000</small>
+                                </div>
+                                <textarea class="form-control" id="reportDescription" name="description" rows="3" maxlength="1000" placeholder="Describe the hazard, exact spot, and potential safety risks..." required></textarea>
+                            </div>
+                        </div>
+
+                        <div class="mt-4 text-end">
+                            <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" id="submitReportBtn" class="btn btn-primary fw-bold px-4">
+                                <span id="submitSpinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+                                Submit Report
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
@@ -162,8 +303,14 @@
 
     <!-- Leaflet.markercluster JS -->
     <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
     <script>
-    // Center roughly on India
+    // Constants
+    const COVERAGE_RADIUS_KM = 50; // "is there any data nearby at all" check
+    const SUMMARY_RADIUS_KM = 15;  // "what's near this specific searched place" for summary card
+    const OVERLAP_RADIUS_M = 100;  // 100m radius threshold for combined tabbed popup
+
+    // Initialize Leaflet Map centered on Kerala
     const map = L.map('map').setView([10.3, 76.3], 7);
 
     L.tileLayer('https://{s}.tile.openstreetmap.de/{z}/{x}/{y}.png', {
@@ -171,12 +318,10 @@
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    let hotspotData = []; // store fetched hotspots for distance checks
+    let hotspotData = [];      // store fetched hotspots for distance checks
+    let approvedReportsData = []; // store fetched approved reports
 
-    // Cluster group for hotspot markers — groups markers that are
-    // genuinely overlapping (same named location) and spiderfies them
-    // apart on click. maxClusterRadius kept small so it does NOT merge
-    // hotspots that are legitimately spread across a city.
+    // Hotspot Cluster Group
     const hotspotClusterGroup = L.markerClusterGroup({
         maxClusterRadius: 40,        // px — only tightly overlapping markers group
         spiderfyOnMaxZoom: true,
@@ -186,7 +331,6 @@
             const markers = cluster.getAllChildMarkers();
             const colors = markers.map(m => m.options.fillColor);
 
-            // Cluster bubble color reflects the worst risk level inside it
             let bubbleColor = 'green';
             if (colors.includes('red')) bubbleColor = 'red';
             else if (colors.includes('orange')) bubbleColor = 'orange';
@@ -213,10 +357,41 @@
     });
     map.addLayer(hotspotClusterGroup);
 
-    const COVERAGE_RADIUS_KM = 50; // "is there any data nearby at all" check
-    const SUMMARY_RADIUS_KM = 15;  // "what's near this specific searched place" for the summary card
+    // Community Reports Layer Group
+    const reportsLayerGroup = L.layerGroup();
+    map.addLayer(reportsLayerGroup);
 
-    // Reset view button
+    // Layer Toggle Control
+    const overlayLayers = {
+        "<span style='font-weight:600;'>🔥 Accident Hotspots</span>": hotspotClusterGroup,
+        "<span style='font-weight:600;'>📍 Community Reports</span>": reportsLayerGroup
+    };
+    L.control.layers(null, overlayLayers, {
+        position: 'topright',
+        collapsed: false
+    }).addTo(map);
+
+    // Blue Pin Icon for Community Reports
+    const blueReportIcon = L.divIcon({
+        className: 'custom-report-pin',
+        html: `
+            <div style="cursor:pointer; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.35));">
+                <svg width="26" height="36" viewBox="0 0 24 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 0C5.372 0 0 5.373 0 12C0 22 12 36 12 36C12 36 24 22 24 12C24 5.373 18.628 0 12 0Z" fill="#0d6efd" stroke="#ffffff" stroke-width="1.5"/>
+                    <circle cx="12" cy="12" r="4.5" fill="#ffffff"/>
+                </svg>
+            </div>
+        `,
+        iconSize: [26, 36],
+        iconAnchor: [13, 36],
+        popupAnchor: [0, -34]
+    });
+
+    // Temp Marker for location picking
+    let tempPickerMarker = null;
+    let isPickingLocation = false;
+
+    // Reset View Button
     document.getElementById("resetZoomBtn").addEventListener("click", function() {
         map.setView([10.3, 76.3], 7);
         hideNoDataMessage();
@@ -224,10 +399,19 @@
         document.getElementById("citySummary").style.display = "none";
         document.getElementById("highRiskAlert").style.display = "none";
 
-        // ADDED:
-        // Clear previous Route Risk result when Reset View is clicked
         clearRouteRiskResults();
     });
+
+    // Haversine distance in km
+    function distanceKm(lat1, lng1, lat2, lng2) {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLng = (lng2 - lng1) * Math.PI / 180;
+        const a = Math.sin(dLat/2) ** 2 +
+                  Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                  Math.sin(dLng/2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    }
 
     // Location search
     document.getElementById("searchBtn").addEventListener("click", searchLocation);
@@ -236,43 +420,27 @@
     });
 
     function searchLocation() {
-
         const query = document.getElementById("searchBox").value.trim();
-
         if (!query) return;
 
-        // ADDED:
-        // Clear previous Route Risk result when a new location is searched
         clearRouteRiskResults();
 
         fetch("/api/geocode/?q=" + encodeURIComponent(query))
             .then(response => response.json())
             .then(data => {
-
                 if (data.error) {
                     document.getElementById("searchErrorMsg").textContent = data.error;
                     document.getElementById("searchErrorMsg").style.display = "block";
-
                     document.getElementById("citySummary").style.display = "none";
                     document.getElementById("highRiskAlert").style.display = "none";
-
-
                     return;
                 }
 
-            // Move map to searched location
                 map.setView([data.lat, data.lng], 12);
                 document.getElementById("searchErrorMsg").style.display = "none";
 
-            // Check whether hotspot data exists nearby
                 checkCoverage(data.lat, data.lng);
 
-            // Find hotspots near the searched location, using a radius
-            // derived from the current view (distance from center to the
-            // edge of the visible map) instead of a fixed km number or
-            // rectangle containment — this stays consistent regardless
-            // of screen size/shape, and catches nearby places (Aluva,
-            // Kalamassery) that a narrow viewport would otherwise cut off
                 const bounds = map.getBounds();
                 const viewRadiusKm = distanceKm(
                     data.lat, data.lng,
@@ -283,38 +451,18 @@
                 );
 
                 if (nearbyClusters.length === 0) {
-
                     document.getElementById("citySummary").style.display = "none";
                     document.getElementById("highRiskAlert").style.display = "none";
                     return;
                 }
 
-            // Show safety summary
-                showCitySummary(
-                    query,
-                    nearbyClusters
-                );
-            // Show high-risk warning
+                showCitySummary(query, nearbyClusters);
                 showHighRiskAlert(nearbyClusters);
-
-        })
-        .catch(() => {
-
-            alert("Search failed. Try again.");
-
-            document.getElementById("citySummary").style.display = "none";
-        });
-    }
-
-    // Haversine distance in km between two lat/lng points
-    function distanceKm(lat1, lng1, lat2, lng2) {
-        const R = 6371;
-        const dLat = (lat2 - lat1) * Math.PI / 180;
-        const dLng = (lng2 - lng1) * Math.PI / 180;
-        const a = Math.sin(dLat/2) ** 2 +
-                  Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
-                  Math.sin(dLng/2) ** 2;
-        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            })
+            .catch(() => {
+                alert("Search failed. Try again.");
+                document.getElementById("citySummary").style.display = "none";
+            });
     }
 
     function checkCoverage(lat, lng) {
@@ -337,303 +485,300 @@
     }
 
     function showCitySummary(city, clusters) {
-
         const summary = document.getElementById("citySummary");
+        const high = clusters.filter(spot => spot.risk_level === "High").length;
+        const medium = clusters.filter(spot => spot.risk_level === "Medium").length;
+        const low = clusters.filter(spot => spot.risk_level === "Low").length;
 
-        const high = clusters.filter(
-            spot => spot.risk_level === "High"
-        ).length;
-
-        const medium = clusters.filter(
-            spot => spot.risk_level === "Medium"
-        ).length;
-
-        const low = clusters.filter(
-            spot => spot.risk_level === "Low"
-        ).length;
-
-        document.getElementById("summaryCity").textContent =
-            city + " Safety Summary";
-
-        document.getElementById("summaryHotspots").textContent =
-            clusters.length;
-
-        document.getElementById("summaryHigh").textContent =
-            high;
-
-        document.getElementById("summaryMedium").textContent =
-            medium;
-
-        document.getElementById("summaryLow").textContent =
-            low;
-
+        document.getElementById("summaryCity").textContent = city + " Safety Summary";
+        document.getElementById("summaryHotspots").textContent = clusters.length;
+        document.getElementById("summaryHigh").textContent = high;
+        document.getElementById("summaryMedium").textContent = medium;
+        document.getElementById("summaryLow").textContent = low;
         summary.style.display = "block";
     }
 
     function showHighRiskAlert(clusters) {
-
         const alertBox = document.getElementById("highRiskAlert");
-
-        const highRiskHotspots = clusters.filter(
-            spot => spot.risk_level === "High"
-        );
+        const highRiskHotspots = clusters.filter(spot => spot.risk_level === "High");
 
         if (highRiskHotspots.length > 0) {
-
             alertBox.innerHTML = `
                 <div class="alert alert-danger shadow-sm" role="alert">
-                    <h5 class="alert-heading">
-                    🚨 HIGH-RISK HOTSPOTS DETECTED
-                    </h5>
-
-                    <p>
-                        There are
-                        <strong>${highRiskHotspots.length}</strong>
-                        high-risk accident hotspots in this area.
-                    </p>
-
-                    <p class="mb-0">
-                        ⚠️ Please drive carefully and follow
-                        traffic safety rules.
-                    </p>
+                    <h5 class="alert-heading">🚨 HIGH-RISK HOTSPOTS DETECTED</h5>
+                    <p>There are <strong>${highRiskHotspots.length}</strong> high-risk accident hotspots in this area.</p>
+                    <p class="mb-0">⚠️ Please drive carefully and follow traffic safety rules.</p>
                 </div>
             `;
-
             alertBox.style.display = "block";
-
         } else {
-
             alertBox.style.display = "none";
         }
     }
 
     function getSafetyRecommendations(spot) {
-
         const recommendations = [];
-
-        // Recommendations based on risk factors
         if (spot.risk_factors && spot.risk_factors.significant_factors) {
-
             spot.risk_factors.significant_factors.forEach(function(factor) {
-
                 const f = factor.toLowerCase();
-
-                if (f.includes("traffic")) {
-                    recommendations.push(
-                        "🚗 Reduce speed and maintain a safe distance from other vehicles."
-                    );
-                }
-
-                if (f.includes("rain") || f.includes("weather")) {
-                    recommendations.push(
-                        "🌧️ Drive slowly on wet roads and avoid sudden braking."
-                    );
-                }
-
-                if (f.includes("fog") || f.includes("visibility")) {
-                    recommendations.push(
-                        "🌫️ Use headlights, reduce speed, and maintain extra distance."
-                    );
-                }
-
-                if (f.includes("peak") || f.includes("time")) {
-                    recommendations.push(
-                        "⏰ Be extra cautious during peak traffic hours."
-                    );
-                }
-
-                if (f.includes("speed")) {
-                    recommendations.push(
-                        "⚠️ Follow the speed limit and avoid overspeeding."
-                    );
-                }
-
-                if (f.includes("severity") || f.includes("fatal")) {
-                    recommendations.push(
-                        "🛑 Exercise extra caution because serious accidents have been observed in this hotspot."
-                    );
-                }
-
+                if (f.includes("traffic")) recommendations.push("🚗 Reduce speed and maintain a safe distance from other vehicles.");
+                if (f.includes("rain") || f.includes("weather")) recommendations.push("🌧️ Drive slowly on wet roads and avoid sudden braking.");
+                if (f.includes("fog") || f.includes("visibility")) recommendations.push("🌫️ Use headlights, reduce speed, and maintain extra distance.");
+                if (f.includes("peak") || f.includes("time")) recommendations.push("⏰ Be extra cautious during peak traffic hours.");
+                if (f.includes("speed")) recommendations.push("⚠️ Follow the speed limit and avoid overspeeding.");
+                if (f.includes("severity") || f.includes("fatal")) recommendations.push("🛑 Exercise extra caution because serious accidents have been observed in this hotspot.");
             });
         }
-
-        // Risk-level based recommendation
         if (spot.risk_level === "High") {
-
-            recommendations.push(
-                "🚨 This is a high-risk hotspot. Drive defensively and follow all traffic safety rules."
-            );
-
+            recommendations.push("🚨 This is a high-risk hotspot. Drive defensively and follow all traffic safety rules.");
         } else if (spot.risk_level === "Medium") {
-
-            recommendations.push(
-                "⚠️ Maintain normal caution and remain alert while driving through this area."
-            );
-
+            recommendations.push("⚠️ Maintain normal caution and remain alert while driving through this area.");
         } else {
-
-            recommendations.push(
-                "✅ Continue following normal road safety practices."
-            );
+            recommendations.push("✅ Continue following normal road safety practices.");
         }
-
-        // Remove duplicate recommendations
         return [...new Set(recommendations)];
     }
 
-
-    // Fetch hotspot clusters and plot them
-    fetch("/api/hotspots/")
-      .then(response => response.json())
-      .then(data => {
-        hotspotData = data.hotspots; // save for coverage checks
-
-        data.hotspots.forEach(function(spot) {
-
-          var color = spot.risk_level === "High" ? "red" :
-                      spot.risk_level === "Medium" ? "orange" : "green";
-
-          L.circleMarker([spot.lat, spot.lng], {
-            radius: 8,
-            fillColor: color,
-            color: color,
-            fillOpacity: 0.7,
-            weight: 1
-          })
-          .bindPopup(
-                "<div style='min-width:280px;'>" +
-
-                "<b>" + spot.city +
-                " - Hotspot " + (spot.cluster_id + 1) +
-                "</b><br>" +
-
-                "Approximate Area: " +
-                (spot.area_name || "Unknown Area") +
-                "<br>" +
-
-                "Risk Level: " +
-                spot.risk_level +
-                "<br>" +
-
-                "Avg Risk Score: " +
-                spot.avg_risk_score +
-                "<br>" +
-
-                "Accidents: " +
-                spot.accident_count +
-
-               "<hr>" +
-
-                (
+    // Helper to generate Hotspot Popup HTML
+    function createHotspotPopupHTML(spot) {
+        return `
+            <div style="min-width:260px;">
+                <b>${spot.city} - Hotspot ${(spot.cluster_id + 1)}</b><br>
+                Approximate Area: ${spot.area_name || "Unknown Area"}<br>
+                Risk Level: <b>${spot.risk_level}</b><br>
+                Avg Risk Score: ${spot.avg_risk_score}<br>
+                Accidents: ${spot.accident_count}
+                <hr style="margin: 8px 0;">
+                ${
                     spot.risk_level === "Low"
+                    ? "<b>✅ This is a low-risk area</b><br><br>No significant risk factors were identified here.<br><br>"
+                    : spot.risk_level === "Medium"
+                    ? "<b>⚠️ Why is this a moderate-risk hotspot?</b><br><br>" +
+                      (spot.risk_factors && spot.risk_factors.significant_factors.length > 0
+                        ? spot.risk_factors.significant_factors.map(f => "🟠 " + f + "<br><br>").join("")
+                        : "No single dominant risk factor was identified, but some risk was still present in this area.<br><br>")
+                    : "<b>🚨 Why is this a high-risk hotspot?</b><br><br>" +
+                      (spot.risk_factors && spot.risk_factors.significant_factors.length > 0
+                        ? spot.risk_factors.significant_factors.map(f => "🔴 " + f + "<br><br>").join("")
+                        : "No dominant risk factor was identified from the available data.<br><br>")
+                }
+                <hr style="margin: 8px 0;">
+                <b>🛡️ Safety Recommendations</b><br><br>
+                ${getSafetyRecommendations(spot).map(r => "• " + r + "<br><br>").join("")}
+                <hr style="margin: 8px 0;">
+                <small class="text-muted">Generated from accident patterns and risk level of this hotspot.</small>
+            </div>
+        `;
+    }
 
-                    ?
+    // Helper to generate Report Popup HTML
+    function createReportPopupHTML(report) {
+        let outOfCoverageNotice = '';
+        if (report.coverage_status === 'OutOfCoverage') {
+            outOfCoverageNotice = `
+                <div class="alert alert-warning py-1 px-2 mt-2 mb-0" style="font-size: 11px;">
+                    ⚠️ Note: This location is outside dataset coverage. Risk scoring not available.
+                </div>
+            `;
+        }
 
-                    "<b>✅ This is a low-risk area</b><br><br>No significant risk factors were identified here.<br><br>"
+        let photoHtml = '';
+        if (report.photo_url) {
+            photoHtml = `
+                <div class="mt-2 text-center">
+                    <a href="${report.photo_url}" target="_blank" title="Click to view full image">
+                        <img src="${report.photo_url}" class="custom-popup-img" alt="Hazard Photo" />
+                    </a>
+                </div>
+            `;
+        }
 
-                    :
+        return `
+            <div style="min-width:250px;">
+                <h6 class="fw-bold text-primary mb-2">📝 Community Report</h6>
+                <div><strong>Issue:</strong> ${report.issue_type}</div>
+                <div class="mt-1"><strong>Description:</strong> ${report.description}</div>
+                <div class="mt-1"><strong>Reported By:</strong> ${report.reported_by}</div>
+                <div class="mt-1"><strong>Date:</strong> ${report.date}</div>
+                ${photoHtml}
+                ${outOfCoverageNotice}
+            </div>
+        `;
+    }
 
-                    spot.risk_level === "Medium"
+    // Helper to generate Combined Tabbed Popup HTML
+    function createCombinedTabbedPopupHTML(spot, report, tabIdPrefix) {
+        const hotspotHtml = createHotspotPopupHTML(spot);
+        const reportHtml = createReportPopupHTML(report);
+        const hotspotTabId = `tab-hs-${tabIdPrefix}`;
+        const reportTabId = `tab-rep-${tabIdPrefix}`;
 
-                    ?
+        return `
+            <div class="custom-tabbed-popup" style="min-width:280px; max-width:320px;">
+                <div class="d-flex gap-1 mb-2 pb-2 border-bottom">
+                    <button type="button" class="popup-tab-btn active" data-target="${hotspotTabId}">🔥 Accident Hotspot</button>
+                    <button type="button" class="popup-tab-btn" data-target="${reportTabId}">📝 Community Report</button>
+                </div>
+                <div class="tab-content">
+                    <div id="${hotspotTabId}" class="popup-tab-pane" style="display: block;">
+                        ${hotspotHtml}
+                    </div>
+                    <div id="${reportTabId}" class="popup-tab-pane" style="display: none;">
+                        ${reportHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }
 
-                    "<b>⚠️ Why is this a moderate-risk hotspot?</b><br><br>" +
-                    (
-                        spot.risk_factors.significant_factors.length > 0
-                        ?
-                        spot.risk_factors.significant_factors
-                            .map(function(factor) {
-                                return "🟠 " + factor + "<br><br>";
-                            })
-                            .join("")
-                        :
-                        "No single dominant risk factor was identified, but some risk was still present in this area.<br><br>"
-                    )
+    // Global listener on Leaflet popupopen to bind vanilla JS tab switching
+    map.on('popupopen', function(e) {
+        const popupNode = e.popup.getElement();
+        if (!popupNode) return;
 
-                    :
+        const tabButtons = popupNode.querySelectorAll('.popup-tab-btn');
+        if (!tabButtons.length) return;
 
-                    "<b>🚨 Why is this a high-risk hotspot?</b><br><br>" +
-                    (
-                        spot.risk_factors.significant_factors.length > 0
-                        ?
-                        spot.risk_factors.significant_factors
-                            .map(function(factor) {
-                                return "🔴 " + factor + "<br><br>";
-                        })
-                        .join("")
-                    :
-                    "No dominant risk factor was identified from the available data.<br><br>"
-                )
-            ) +
+        tabButtons.forEach(btn => {
+            btn.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                const targetId = this.getAttribute('data-target');
 
-            "<hr>" +
+                // Deactivate all buttons
+                tabButtons.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
 
-                "<b>🛡️ Safety Recommendations</b><br><br>" +
-
-                getSafetyRecommendations(spot)
-                    .map(function(recommendation) {
-                        return "• " + recommendation + "<br><br>";
-                    })
-                    .join("") +
-
-                "<hr>" +
-
-                "<small>" +
-                "The recommendations are generated from the accident patterns and risk level of this hotspot." +
-                "</small>" +
-
-                "</div>"
-            )
-          .addTo(hotspotClusterGroup);
+                // Toggle visibility of panes
+                popupNode.querySelectorAll('.popup-tab-pane').forEach(pane => {
+                    if (pane.id === targetId) {
+                        pane.style.display = 'block';
+                    } else {
+                        pane.style.display = 'none';
+                    }
+                });
+            });
         });
-      })
-      .catch(error => console.error("Error loading hotspots:", error));
+    });
 
+    // Load Hotspots & Approved Reports
+    function loadMapData() {
+        // Step 1: Fetch Hotspots
+        fetch("/api/hotspots/")
+            .then(response => response.json())
+            .then(hotspotRes => {
+                hotspotData = hotspotRes.hotspots || [];
 
-    
+                // Step 2: Fetch Approved Community Reports
+                return fetch("/api/reports/approved/")
+                    .then(response => response.json())
+                    .then(reportRes => {
+                        approvedReportsData = reportRes.reports || [];
+                        renderMapLayers(hotspotData, approvedReportsData);
+                    });
+            })
+            .catch(err => console.error("Error loading map data:", err));
+    }
+
+    function renderMapLayers(hotspots, reports) {
+        hotspotClusterGroup.clearLayers();
+        reportsLayerGroup.clearLayers();
+
+        // Create hotspot markers dictionary to easily check and link overlapping reports
+        const hotspotMarkersMap = new Map();
+
+        hotspots.forEach(spot => {
+            const color = spot.risk_level === "High" ? "red" :
+                          spot.risk_level === "Medium" ? "orange" : "green";
+
+            const marker = L.circleMarker([spot.lat, spot.lng], {
+                radius: 8,
+                fillColor: color,
+                color: color,
+                fillOpacity: 0.7,
+                weight: 1
+            });
+
+            // Initial normal popup
+            marker.bindPopup(createHotspotPopupHTML(spot));
+            hotspotClusterGroup.addLayer(marker);
+
+            hotspotMarkersMap.set(spot.cluster_id + '_' + spot.city, { spot, marker });
+        });
+
+        // Plot Approved Community Reports
+        reports.forEach((rep, index) => {
+            let matchedHotspotObj = null;
+            let minDistanceM = Infinity;
+
+            // Check overlap with any hotspot within OVERLAP_RADIUS_M (100 meters)
+            hotspots.forEach(spot => {
+                const distM = distanceKm(rep.lat, rep.lng, spot.lat, spot.lng) * 1000;
+                if (distM <= OVERLAP_RADIUS_M && distM < minDistanceM) {
+                    minDistanceM = distM;
+                    matchedHotspotObj = spot;
+                }
+            });
+
+            let repLat = rep.lat;
+            let repLng = rep.lng;
+            let popupContent = "";
+
+            if (matchedHotspotObj) {
+                // Overlapping case:
+                // Offset blue marker slightly (~15 meters / ~0.00015 deg) so both icons remain visible
+                repLat += 0.00015;
+                repLng += 0.00015;
+
+                const tabKey = `combo-${index}`;
+                popupContent = createCombinedTabbedPopupHTML(matchedHotspotObj, rep, tabKey);
+
+                // Update the matching hotspot circle marker to also open this tabbed popup
+                const hsEntry = hotspotMarkersMap.get(matchedHotspotObj.cluster_id + '_' + matchedHotspotObj.city);
+                if (hsEntry && hsEntry.marker) {
+                    hsEntry.marker.setPopupContent(popupContent);
+                }
+            } else {
+                // Non-overlapping standard popup
+                popupContent = createReportPopupHTML(rep);
+            }
+
+            const reportMarker = L.marker([repLat, repLng], {
+                icon: blueReportIcon,
+                zIndexOffset: 500
+            });
+            reportMarker.bindPopup(popupContent);
+            reportsLayerGroup.addLayer(reportMarker);
+        });
+    }
+
+    // Initial Map Data Load
+    loadMapData();
+
     // ---------- Route Risk Feature ----------
     let routeLayers = [];
 
-
-    // =========================================================
-    // ADDED:
-    // Function to clear the previous Route Risk result
-    // =========================================================
-
     function clearRouteRiskResults() {
-
-        // Remove previously drawn route lines
-        // and route hotspot markers
         routeLayers.forEach(layer => {
-
             if (map.hasLayer(layer)) {
                 map.removeLayer(layer);
             }
-
         });
-
         routeLayers = [];
 
-        // ADDED: restore the base hotspot layer whenever route results are cleared
+        // Restore layers
         if (!map.hasLayer(hotspotClusterGroup)) {
             map.addLayer(hotspotClusterGroup);
         }
+        if (!map.hasLayer(reportsLayerGroup)) {
+            map.addLayer(reportsLayerGroup);
+        }
 
-
-        // Clear previous route error
         document.getElementById('routeRiskError').style.display = 'none';
         document.getElementById('routeRiskError').textContent = '';
-
-
-        // Clear previous route summary
         document.getElementById('routeRiskSummary').innerHTML = '';
-
-
-        // Clear route input fields
         document.getElementById('routeStart').value = '';
         document.getElementById('routeEnd').value = '';
     }
-
 
     document.getElementById('routeRiskBtn').addEventListener('click', checkRouteRisk);
 
@@ -652,7 +797,6 @@
             return;
         }
 
-        // Clear any previously drawn routes/markers
         routeLayers.forEach(layer => map.removeLayer(layer));
         routeLayers = [];
 
@@ -673,8 +817,6 @@
     }
 
     function drawRoutes(data) {
-        // ADDED: hide the base hotspot layer once a route is found —
-        // only route-matched hotspots should show now
         if (map.hasLayer(hotspotClusterGroup)) {
             map.removeLayer(hotspotClusterGroup);
         }
@@ -702,7 +844,7 @@
                     }).addTo(map);
 
                     marker.bindPopup(
-                        `<b>${h.area_name}</b><br>Risk: ${h.risk_level}<br>Score: ${h.avg_risk_score}`
+                        `<b>${h.area_name || h.city}</b><br>Risk: ${h.risk_level}<br>Score: ${h.avg_risk_score}`
                     );
 
                     routeLayers.push(marker);
@@ -715,11 +857,6 @@
         showRouteRiskSummary(data);
     }
 
-    // =========================================================
-    // ADDED:
-    // Toggle the hotspot-name list open/closed when the
-    // "X hotspot(s), Y high-risk" text is clicked
-    // =========================================================
     function toggleHotspotList(el) {
         const container = el.closest('.route-risk-text');
         const list = container.querySelector('.hotspot-name-list');
@@ -739,15 +876,13 @@
             if (route.no_data) {
                 riskText = 'No accident data available for this route.';
             } else {
-                // Build the list of hotspot names/risk levels for this route
                 const hotspotListItems = route.matched_hotspots.map(h => {
                     const emoji = h.risk_level === "High" ? "🔴" :
                                   h.risk_level === "Medium" ? "🟠" : "🟢";
-                    const label = h.area_name || h.city;
-                    return `<li>${emoji} ${label}</li>`;
+                    const spotLabel = h.area_name || h.city;
+                    return `<li>${emoji} ${spotLabel}</li>`;
                 }).join('');
 
-                // ADDED: clickable count span + hidden list of place names
                 riskText = `
                     <div class="route-risk-text">
                         Risk score: ${route.total_risk_score}
@@ -770,6 +905,214 @@
 
         summaryBox.innerHTML = html;
     }
+
+    // =====================================================================
+    // Community Reporting Form & Interaction Logic
+    // =====================================================================
+
+    const reportModalEl = document.getElementById('reportModal');
+    const reportModal = new bootstrap.Modal(reportModalEl);
+    const reportForm = document.getElementById('reportForm');
+    const reportAlert = document.getElementById('reportAlert');
+    const submitReportBtn = document.getElementById('submitReportBtn');
+    const submitSpinner = document.getElementById('submitSpinner');
+    const reportLocationDisplay = document.getElementById('reportLocationDisplay');
+    const reportLatitude = document.getElementById('reportLatitude');
+    const reportLongitude = document.getElementById('reportLongitude');
+    const descTextarea = document.getElementById('reportDescription');
+    const descCharCount = document.getElementById('descCharCount');
+
+    // Description Character Counter
+    descTextarea.addEventListener('input', function() {
+        descCharCount.textContent = `${this.value.length} / 1000`;
+    });
+
+    // Pick on Map Button Handler
+    document.getElementById('reportPickMapBtn').addEventListener('click', function() {
+        isPickingLocation = true;
+        document.getElementById('map').classList.add('picking-active');
+        reportModal.hide();
+
+        showFormAlert('info', '📍 Click anywhere on the map to set the hazard location.');
+        // Show temporary banner on map
+        document.getElementById('searchErrorMsg').innerHTML = '📍 <b>Click on the map</b> to select the hazard location.';
+        document.getElementById('searchErrorMsg').className = 'alert alert-info';
+        document.getElementById('searchErrorMsg').style.display = 'block';
+    });
+
+    // Map Click Listener for picking location
+    map.on('click', function(e) {
+        if (isPickingLocation) {
+            setLocationCoordinates(e.latlng.lat, e.latlng.lng, "Map Click");
+            isPickingLocation = false;
+            document.getElementById('map').classList.remove('picking-active');
+            document.getElementById('searchErrorMsg').style.display = 'none';
+            reportModal.show();
+        }
+    });
+
+    // Geocode Address Search in Modal
+    document.getElementById('reportGeocodeBtn').addEventListener('click', function() {
+        const address = document.getElementById('reportAddressSearch').value.trim();
+        if (!address) {
+            showFormAlert('warning', 'Please enter a place name or address to search.');
+            return;
+        }
+
+        fetch("/api/geocode/?q=" + encodeURIComponent(address))
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    showFormAlert('danger', data.error);
+                    return;
+                }
+                setLocationCoordinates(data.lat, data.lng, data.display_name || address);
+                map.setView([data.lat, data.lng], 13);
+                showFormAlert('success', `📍 Location found: ${data.display_name || address}`);
+            })
+            .catch(() => {
+                showFormAlert('danger', 'Unable to geocode address. Please try again or pick on map.');
+            });
+    });
+
+    // Helper to set coordinates and place temporary picker marker
+    function setLocationCoordinates(lat, lng, label) {
+        const roundLat = parseFloat(lat).toFixed(5);
+        const roundLng = parseFloat(lng).toFixed(5);
+
+        reportLatitude.value = roundLat;
+        reportLongitude.value = roundLng;
+
+        reportLocationDisplay.innerHTML = `
+            <span class="text-success fw-bold">✓ Selected:</span> Lat <strong>${roundLat}</strong>, Lng <strong>${roundLng}</strong>
+            ${label && label !== "Map Click" ? `<br><small class="text-muted">${label}</small>` : ''}
+        `;
+        reportLocationDisplay.className = 'alert alert-success py-2 px-3 small mb-0';
+
+        // Place or update picker marker
+        if (tempPickerMarker) {
+            tempPickerMarker.setLatLng([roundLat, roundLng]);
+        } else {
+            tempPickerMarker = L.marker([roundLat, roundLng], {
+                draggable: true,
+                title: "Reported Location"
+            }).addTo(map);
+
+            tempPickerMarker.on('dragend', function(e) {
+                const pos = e.target.getLatLng();
+                setLocationCoordinates(pos.lat, pos.lng, "Dragged Marker");
+            });
+        }
+    }
+
+    function showFormAlert(type, message) {
+        reportAlert.className = `alert alert-${type}`;
+        reportAlert.innerHTML = message;
+        reportAlert.classList.remove('d-none');
+    }
+
+    function hideFormAlert() {
+        reportAlert.classList.add('d-none');
+        reportAlert.innerHTML = '';
+    }
+
+    // Modal close event: reset alert
+    reportModalEl.addEventListener('hidden.bs.modal', function () {
+        if (!isPickingLocation) {
+            hideFormAlert();
+        }
+    });
+
+    // Submit Report Form
+    reportForm.addEventListener('submit', function(e) {
+        e.preventDefault();
+        hideFormAlert();
+
+        const name = document.getElementById('reportName').value.trim();
+        const email = document.getElementById('reportEmail').value.trim();
+        const lat = reportLatitude.value;
+        const lng = reportLongitude.value;
+        const issueType = document.getElementById('reportIssueType').value;
+        const description = descTextarea.value.trim();
+        const photoFile = document.getElementById('reportPhoto').files[0];
+
+        // Client-side validations
+        if (!name) {
+            showFormAlert('danger', 'Please enter your name.');
+            return;
+        }
+        if (!email) {
+            showFormAlert('danger', 'Please enter a valid email address.');
+            return;
+        }
+        if (!lat || !lng) {
+            showFormAlert('danger', 'Please select a location on the map or search an address.');
+            return;
+        }
+        if (!issueType) {
+            showFormAlert('danger', 'Please select an issue type.');
+            return;
+        }
+        if (!description) {
+            showFormAlert('danger', 'Please provide a description.');
+            return;
+        }
+        if (photoFile && photoFile.size > 5 * 1024 * 1024) {
+            showFormAlert('danger', 'Photo size must not exceed 5 MB.');
+            return;
+        }
+
+        // Build FormData
+        const formData = new FormData(reportForm);
+
+        // Get CSRF Token from form or cookie
+        const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        // UI Loading State
+        submitReportBtn.disabled = true;
+        submitSpinner.classList.remove('d-none');
+
+        fetch("/api/reports/submit/", {
+            method: "POST",
+            headers: {
+                "X-CSRFToken": csrfToken
+            },
+            body: formData
+        })
+        .then(res => res.json().then(data => ({ status: res.status, data })))
+        .then(({ status, data }) => {
+            submitReportBtn.disabled = false;
+            submitSpinner.classList.add('d-none');
+
+            if (status === 200 && data.success) {
+                showFormAlert('success', '🎉 <strong>Report submitted successfully!</strong> Pending admin approval.');
+                reportForm.reset();
+                descCharCount.textContent = '0 / 1000';
+                reportLatitude.value = '';
+                reportLongitude.value = '';
+                reportLocationDisplay.innerHTML = 'No location selected. Click "Pick on Map" or search an address.';
+                reportLocationDisplay.className = 'alert alert-light border py-2 px-3 small text-muted mb-0';
+
+                if (tempPickerMarker) {
+                    map.removeLayer(tempPickerMarker);
+                    tempPickerMarker = null;
+                }
+
+                // Auto close modal after 2.5 seconds
+                setTimeout(() => {
+                    reportModal.hide();
+                    hideFormAlert();
+                }, 2500);
+            } else {
+                showFormAlert('danger', data.error || 'Failed to submit report. Please check your inputs.');
+            }
+        })
+        .catch(() => {
+            submitReportBtn.disabled = false;
+            submitSpinner.classList.add('d-none');
+            showFormAlert('danger', 'A network error occurred while submitting the report. Please try again.');
+        });
+    });
 </script>
 
 </body>
