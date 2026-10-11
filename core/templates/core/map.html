@@ -816,11 +816,61 @@
             });
     }
 
-    function drawRoutes(data) {
+        // Snap a point to the nearest point on a route line.
+    // routeLatLngs = [[lat, lng], [lat, lng], ...]
+    function snapToRoute(lat, lng, routeLatLngs) {
+        if (!routeLatLngs || routeLatLngs.length === 0) {
+            return { lat: lat, lng: lng };
+        }
+        if (routeLatLngs.length === 1) {
+            return { lat: routeLatLngs[0][0], lng: routeLatLngs[0][1] };
+        }
+
+        const cosLat = Math.cos(lat * Math.PI / 180);
+        let bestD2 = Infinity;
+        let bestLat = lat;
+        let bestLng = lng;
+
+        for (let i = 0; i < routeLatLngs.length - 1; i++) {
+            const a = routeLatLngs[i];
+            const b = routeLatLngs[i + 1];
+
+            const ax = (a[1] - lng) * cosLat;
+            const ay = a[0] - lat;
+            const bx = (b[1] - lng) * cosLat;
+            const by = b[0] - lat;
+
+            const dx = bx - ax;
+            const dy = by - ay;
+            const len2 = dx * dx + dy * dy;
+
+            let t = 0;
+            if (len2 > 0) {
+                t = -(ax * dx + ay * dy) / len2;
+                if (t < 0) t = 0;
+                if (t > 1) t = 1;
+            }
+
+            const px = ax + t * dx;
+            const py = ay + t * dy;
+            const d2 = px * px + py * py;
+
+            if (d2 < bestD2) {
+                bestD2 = d2;
+                bestLat = a[0] + t * (b[0] - a[0]);
+                bestLng = a[1] + t * (b[1] - a[1]);
+            }
+        }
+
+        return { lat: bestLat, lng: bestLng };
+    }
+
+        function drawRoutes(data) {
         if (map.hasLayer(hotspotClusterGroup)) {
             map.removeLayer(hotspotClusterGroup);
         }
-       
+
+
         const bounds = [];
 
         data.routes.forEach((route, i) => {
@@ -835,7 +885,10 @@
 
             if (isBest) {
                 route.matched_hotspots.forEach(h => {
-                    const marker = L.circleMarker([h.lat, h.lng], {
+                    // Snap the marker onto the route line
+                    const snapped = snapToRoute(h.lat, h.lng, route.polyline);
+
+                    const marker = L.circleMarker([snapped.lat, snapped.lng], {
                         radius: 10,
                         color: '#ff0000',
                         fillColor: '#ff0000',
@@ -856,7 +909,6 @@
 
         showRouteRiskSummary(data);
     }
-
     function toggleHotspotList(el) {
         const container = el.closest('.route-risk-text');
         const list = container.querySelector('.hotspot-name-list');
@@ -869,8 +921,26 @@
         const summaryBox = document.getElementById('routeRiskSummary');
         let html = '';
 
-        data.routes.forEach((route, i) => {
-            const label = i === data.recommended_index ? '⭐ Recommended' : `Alternative ${i + 1}`;
+        // Show the recommended route first, then the alternatives
+        const order = data.routes.map((_, i) => i);
+        order.sort((a, b) => {
+            if (a === data.recommended_index) return -1;
+            if (b === data.recommended_index) return 1;
+            return a - b;
+        });
+
+        let altCount = 0;
+
+        order.forEach(i => {
+            const route = data.routes[i];
+
+            let label;
+            if (i === data.recommended_index) {
+                label = '⭐ Recommended';
+            } else {
+                altCount += 1;
+                label = `Alternative ${altCount}`;
+            }
 
             let riskText;
             if (route.no_data) {

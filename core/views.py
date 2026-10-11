@@ -41,7 +41,7 @@ def _get_osrm_routes(start_lat, start_lng, end_lat, end_lng):
     return data["routes"]
 
 
-HOTSPOT_MATCH_RADIUS_KM = 0.3  # ~300m — "essentially on the route"
+HOTSPOT_MATCH_RADIUS_KM = 0.7  # ~700m — "essentially on the route"
 
 
 def _point_to_segment_distance_km(lat, lng, lat1, lng1, lat2, lng2):
